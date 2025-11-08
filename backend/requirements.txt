@@ -1,0 +1,27 @@
+# Core LangChain and AI
+langchain
+langchain-google-genai
+langchain-core
+langchain-google-vertexai
+
+# Redis for task queues and memory
+redis
+hiredis
+
+# Web framework for API
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Utilities
+python-dotenv
+python-dateutil
+
+# Logging and monitoring
+rich
+colorama
+
+# HTTP client
+httpx
+
