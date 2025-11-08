@@ -1,0 +1,7 @@
+Session: 20251108_164214
+Profiles checked: 8
+Waterloo students found: 2
+
+Profiles:
+1. Elrich Chen - Waterloo Student
+2. Muhib Waqar - Waterloo Student
