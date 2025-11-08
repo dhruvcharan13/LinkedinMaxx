@@ -1,92 +1,43 @@
-# Playwright ↔ Backend Agent Integration Guide
+# Patchright ↔ Backend Integration Guide
 
 ## Overview
 
-This document explains how to integrate your Playwright scraping code with the LinkedInMaxx backend agents. The communication happens through **Redis queues**.
+This guide explains how to integrate the Patchright scraper (`../patchright/`) with the backend agents.
 
-## Architecture
+## How Patchright Works
 
-```
-┌─────────────────┐
-│   Playwright    │
-│   (Scraping)    │
-└────────┬────────┘
-         │
-         │ 1. Publish scraped profiles
-         ▼
-┌─────────────────────────────────────┐
-│         Redis Queues                │
-│  • profiles:scraped (INPUT)         │
-│  • playwright:post (OUTPUT)         │
-│  • playwright:message (OUTPUT)      │
-└────────┬────────────────────────────┘
-         │
-         │ 2. Agents process profiles
-         │ 3. Publish instructions
-         ▼
-┌─────────────────┐
-│  Python Backend │
-│  (Agents)       │
-└─────────────────┘
-```
+The Patchright code in `../patchright/`:
 
-## Redis Queues
+1. **Scrapes LinkedIn profiles** using stealth browser automation
+2. **Saves data locally** to `scraped_data/` folder
+3. **Does NOT currently publish to Redis** - needs integration
 
-### 1. Input Queue: `profiles:scraped`
+## Integration Steps
 
-**Purpose:** Playwright publishes scraped profile data here for agents to process.
+### Step 1: Update Patchright to Publish to Redis
 
-**Format:**
-```json
-{
-  "task_id": "profiles:scraped:2025-11-08T16:47:09.871850",
-  "queue": "profiles:scraped",
-  "instruction": {
-    "action": "process_profile",
-    "profile_url": "https://www.linkedin.com/in/elrich-chen/",
-    "profile_data": {
-      "url": "https://www.linkedin.com/in/elrich-chen/",
-      "scraped_at": "2025-11-08T16:47:09.871850",
-      "name": "Elrich Chen",
-      "headline": "CS @ UWaterloo | AI automations...",
-      "location": "He/Him",
-      "bio": "...",
-      "experience": [
-        {
-          "title": "AI automation",
-          "company": "DoneMaker",
-          "location": "Internship"
-        }
-      ],
-      "education": [
-        {
-          "school": "University of Waterloo",
-          "degree": "CS"
-        }
-      ]
-    },
-    "timestamp": "2025-11-08T16:47:09.871850"
-  },
-  "status": "pending"
-}
-```
+Modify `../patchright/linkedin_scraper.py` to publish scraped profiles to Redis:
 
-**Playwright Code (Python):**
 ```python
 import redis
 import json
 from datetime import datetime
 
-# Connect to Redis
-redis_client = redis.Redis(
-    host='localhost',
-    port=6379,
-    db=0,
-    decode_responses=True
-)
+# Add Redis connection at the top of LinkedInScraper class
+def __init__(self, ...):
+    # ... existing code ...
+    
+    # Add Redis connection
+    self.redis_client = redis.Redis(
+        host='localhost',
+        port=6379,
+        db=0,
+        decode_responses=True
+    )
 
-def publish_scraped_profile(profile_data):
-    """Publish scraped profile to Redis queue."""
+# Add method to publish profile to Redis
+def publish_profile_to_redis(self, profile_data: Dict):
+    """Publish scraped profile to Redis queue for agents to process."""
     queue_name = "profiles:scraped"
     task_id = f"{queue_name}:{datetime.now().isoformat()}"
     
@@ -102,456 +53,249 @@ def publish_scraped_profile(profile_data):
         "status": "pending"
     }
     
-    # Push to queue
-    redis_client.lpush(queue_name, json.dumps(instruction))
-    print(f"✅ Published profile to queue: {profile_data['url']}")
-    
+    self.redis_client.lpush(queue_name, json.dumps(instruction))
+    print(f"✅ Published profile to Redis: {profile_data.get('name', 'Unknown')}")
     return task_id
 
-# Example usage after scraping
-scraped_profile = {
-    "url": "https://www.linkedin.com/in/elrich-chen/",
-    "scraped_at": datetime.now().isoformat(),
-    "name": "Elrich Chen",
-    "headline": "CS @ UWaterloo...",
-    "bio": "...",
-    "experience": [...],
-    "education": [...]
-}
-
-publish_scraped_profile(scraped_profile)
-```
-
-**Playwright Code (Node.js/TypeScript):**
-```typescript
-import Redis from 'ioredis';
-import { DateTime } from 'luxon';
-
-const redis = new Redis({
-  host: 'localhost',
-  port: 6379,
-  db: 0,
-});
-
-async function publishScrapedProfile(profileData: any) {
-  const queueName = 'profiles:scraped';
-  const taskId = `${queueName}:${DateTime.now().toISO()}`;
-  
-  const instruction = {
-    task_id: taskId,
-    queue: queueName,
-    instruction: {
-      action: 'process_profile',
-      profile_url: profileData.url,
-      profile_data: profileData,
-      timestamp: DateTime.now().toISO(),
-    },
-    status: 'pending',
-  };
-  
-  await redis.lpush(queueName, JSON.stringify(instruction));
-  console.log(`✅ Published profile to queue: ${profileData.url}`);
-  
-  return taskId;
-}
-```
-
----
-
-### 2. Output Queue: `playwright:post`
-
-**Purpose:** Backend agents publish post instructions here for Playwright to execute.
-
-**Format:**
-```json
-{
-  "task_id": "playwright:post:2025-11-08T16:54:07.029355",
-  "queue": "playwright:post",
-  "instruction": {
-    "action": "publish_post",
-    "content": "Just finished building an AI agent system...",
-    "metadata": {
-      "generated_at": "2025-11-08T16:54:07.029355",
-      "model": "gemini-pro",
-      "agent": "daily_post_agent"
-    },
-    "timestamp": "2025-11-08T16:54:07.029355"
-  },
-  "status": "pending"
-}
-```
-
-**Playwright Code (Python):**
-```python
-def consume_post_instructions():
-    """Consume post instructions from Redis queue."""
-    queue_name = "playwright:post"
+# Modify scrape_profile method to also publish to Redis
+def scrape_profile(self, profile_url: str) -> Dict:
+    # ... existing scraping code ...
     
-    while True:
-        # Blocking pop (waits for new instructions)
-        result = redis_client.brpop(queue_name, timeout=5)
-        
-        if result:
-            _, data = result
-            instruction = json.loads(data)
-            
-            # Execute the post
-            post_content = instruction["instruction"]["content"]
-            print(f"📝 Publishing post: {post_content[:100]}...")
-            
-            # Your Playwright code to publish the post
-            # await page.fill('[data-testid="post-input"]', post_content)
-            # await page.click('[data-testid="post-submit"]')
-            
-            print(f"✅ Post published: {instruction['task_id']}")
-```
-
-**Playwright Code (Node.js/TypeScript):**
-```typescript
-async function consumePostInstructions() {
-  const queueName = 'playwright:post';
-  
-  while (true) {
-    const result = await redis.brpop(queueName, 5); // 5 second timeout
+    # After scraping, publish to Redis
+    if profile_data and "error" not in profile_data:
+        self.publish_profile_to_redis(profile_data)
     
-    if (result) {
-      const instruction = JSON.parse(result[1]);
-      const postContent = instruction.instruction.content;
-      
-      console.log(`📝 Publishing post: ${postContent.substring(0, 100)}...`);
-      
-      // Your Playwright code to publish the post
-      // await page.fill('[data-testid="post-input"]', postContent);
-      // await page.click('[data-testid="post-submit"]');
-      
-      console.log(`✅ Post published: ${instruction.task_id}`);
-    }
-  }
-}
+    return profile_data
 ```
 
----
+### Step 2: Add Instruction Consumers to Patchright
 
-### 3. Output Queue: `playwright:message`
-
-**Purpose:** Backend agents publish message/connection instructions here for Playwright to execute.
-
-**Format:**
-```json
-{
-  "task_id": "playwright:message:2025-11-08T16:54:07.771611",
-  "queue": "playwright:message",
-  "instruction": {
-    "action": "send_message",  // or "connect_only"
-    "profile_url": "https://www.linkedin.com/in/elrich-chen/",
-    "message": "Hey Elrich! Saw you're in 2A too...",  // Empty if connect_only
-    "timestamp": "2025-11-08T16:54:07.771611"
-  },
-  "status": "pending"
-}
-```
-
-**Actions:**
-- `send_message`: Send a connection request WITH a message
-- `connect_only`: Send a connection request WITHOUT a message
-
-**Playwright Code (Python):**
-```python
-def consume_message_instructions():
-    """Consume message/connection instructions from Redis queue."""
-    queue_name = "playwright:message"
-    
-    while True:
-        # Blocking pop (waits for new instructions)
-        result = redis_client.brpop(queue_name, timeout=5)
-        
-        if result:
-            _, data = result
-            instruction = json.loads(data)
-            inst = instruction["instruction"]
-            
-            profile_url = inst["profile_url"]
-            action = inst["action"]
-            message = inst.get("message", "")
-            
-            print(f"📨 Processing: {action} for {profile_url}")
-            
-            # Navigate to profile
-            # await page.goto(profile_url)
-            
-            if action == "send_message":
-                # Click "Connect" button
-                # await page.click('[data-testid="connect-button"]')
-                # Wait for message modal
-                # await page.fill('[data-testid="message-input"]', message)
-                # await page.click('[data-testid="send-button"]')
-                print(f"✅ Sent message: {message[:50]}...")
-            elif action == "connect_only":
-                # Click "Connect" button (no message)
-                # await page.click('[data-testid="connect-button"]')
-                # Click "Send without a message" or "Connect"
-                print(f"✅ Sent connection request (no message)")
-            
-            print(f"✅ Completed: {instruction['task_id']}")
-```
-
-**Playwright Code (Node.js/TypeScript):**
-```typescript
-async function consumeMessageInstructions() {
-  const queueName = 'playwright:message';
-  
-  while (true) {
-    const result = await redis.brpop(queueName, 5);
-    
-    if (result) {
-      const instruction = JSON.parse(result[1]);
-      const inst = instruction.instruction;
-      
-      const profileUrl = inst.profile_url;
-      const action = inst.action;
-      const message = inst.message || '';
-      
-      console.log(`📨 Processing: ${action} for ${profileUrl}`);
-      
-      // Navigate to profile
-      // await page.goto(profileUrl);
-      
-      if (action === 'send_message') {
-        // Click "Connect" and send message
-        // await page.click('[data-testid="connect-button"]');
-        // await page.fill('[data-testid="message-input"]', message);
-        // await page.click('[data-testid="send-button"]');
-        console.log(`✅ Sent message: ${message.substring(0, 50)}...`);
-      } else if (action === 'connect_only') {
-        // Click "Connect" without message
-        // await page.click('[data-testid="connect-button"]');
-        console.log(`✅ Sent connection request (no message)`);
-      }
-      
-      console.log(`✅ Completed: ${instruction.task_id}`);
-    }
-  }
-}
-```
-
----
-
-## Complete Playwright Integration Example
-
-### Python Example
+Create a new file `../patchright/instruction_consumer.py`:
 
 ```python
+"""
+Consume instructions from Redis and execute with Playwright.
+"""
+
 import redis
 import json
 import asyncio
-from playwright.async_api import async_playwright
-from datetime import datetime
+from typing import Optional, Dict
+from patchright.sync_api import sync_playwright
 
-# Redis connection
-redis_client = redis.Redis(
-    host='localhost',
-    port=6379,
-    db=0,
-    decode_responses=True
-)
-
-async def scrape_linkedin_feed(page):
-    """Scrape LinkedIn feed and extract profile URLs."""
-    # Your scraping logic here
-    profile_urls = []
+class InstructionConsumer:
+    """Consumes and executes instructions from Redis."""
     
-    # Example: Scroll and collect profile URLs
-    # await page.goto("https://www.linkedin.com/feed/")
-    # ... your scraping code ...
+    def __init__(self):
+        self.redis_client = redis.Redis(
+            host='localhost',
+            port=6379,
+            db=0,
+            decode_responses=True
+        )
+        self.playwright = None
+        self.browser = None
+        self.page = None
     
-    return profile_urls
-
-async def scrape_profile(page, profile_url):
-    """Scrape a single profile."""
-    # Your profile scraping logic
-    profile_data = {
-        "url": profile_url,
-        "scraped_at": datetime.now().isoformat(),
-        "name": "...",
-        "headline": "...",
-        "bio": "...",
-        "experience": [...],
-        "education": [...]
-    }
+    def start_browser(self):
+        """Start browser for executing instructions."""
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.chromium.launch(headless=False)
+        self.page = self.browser.new_page()
+        
+        # Login to LinkedIn (reuse existing login logic)
+        # ... login code ...
     
-    return profile_data
-
-def publish_profile(profile_data):
-    """Publish scraped profile to Redis."""
-    queue_name = "profiles:scraped"
-    task_id = f"{queue_name}:{datetime.now().isoformat()}"
-    
-    instruction = {
-        "task_id": task_id,
-        "queue": queue_name,
-        "instruction": {
-            "action": "process_profile",
-            "profile_url": profile_data["url"],
-            "profile_data": profile_data,
-            "timestamp": datetime.now().isoformat()
-        },
-        "status": "pending"
-    }
-    
-    redis_client.lpush(queue_name, json.dumps(instruction))
-    print(f"✅ Published: {profile_data['url']}")
-
-async def consume_post_instructions(page):
-    """Consume and execute post instructions."""
-    queue_name = "playwright:post"
-    
-    while True:
-        result = redis_client.brpop(queue_name, timeout=5)
+    def consume_post_instruction(self) -> Optional[Dict]:
+        """Consume a post instruction from Redis."""
+        result = self.redis_client.brpop("playwright:post", timeout=5)
         if result:
             _, data = result
-            instruction = json.loads(data)
-            content = instruction["instruction"]["content"]
-            
-            # Execute post
-            # await page.goto("https://www.linkedin.com/feed/")
-            # await page.fill('[data-testid="post-input"]', content)
-            # await page.click('[data-testid="post-submit"]')
-            
-            print(f"✅ Post published: {instruction['task_id']}")
-
-async def consume_message_instructions(page):
-    """Consume and execute message instructions."""
-    queue_name = "playwright:message"
+            return json.loads(data)
+        return None
     
-    while True:
-        result = redis_client.brpop(queue_name, timeout=5)
+    def consume_message_instruction(self) -> Optional[Dict]:
+        """Consume a message/connection instruction from Redis."""
+        result = self.redis_client.brpop("playwright:message", timeout=5)
         if result:
             _, data = result
-            instruction = json.loads(data)
-            inst = instruction["instruction"]
-            
-            # Execute message/connection
-            # await page.goto(inst["profile_url"])
-            # ... your connection/message logic ...
-            
-            print(f"✅ Message processed: {instruction['task_id']}")
-
-async def main():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        page = await browser.new_page()
+            return json.loads(data)
+        return None
+    
+    def execute_post(self, instruction: Dict):
+        """Execute a post instruction."""
+        content = instruction["instruction"]["content"]
+        # Your Playwright code to publish post
+        # self.page.goto("https://www.linkedin.com/feed/")
+        # self.page.fill('[data-testid="post-input"]', content)
+        # self.page.click('[data-testid="post-submit"]')
+        print(f"✅ Posted: {content[:50]}...")
+    
+    def execute_message(self, instruction: Dict):
+        """Execute a message/connection instruction."""
+        inst = instruction["instruction"]
+        profile_url = inst["profile_url"]
+        action = inst["action"]
+        message = inst.get("message", "")
         
-        # Login to LinkedIn
-        # await page.goto("https://www.linkedin.com/login")
-        # ... login logic ...
+        # Navigate to profile
+        self.page.goto(profile_url)
         
-        # Start consumers in background
-        asyncio.create_task(consume_post_instructions(page))
-        asyncio.create_task(consume_message_instructions(page))
+        if action == "send_message":
+            # Send connection request with message
+            # ... your Playwright code ...
+            print(f"✅ Sent message to {profile_url}")
+        elif action == "connect_only":
+            # Send connection request without message
+            # ... your Playwright code ...
+            print(f"✅ Connected to {profile_url}")
+    
+    def run(self):
+        """Main loop to consume and execute instructions."""
+        self.start_browser()
         
-        # Scrape feed and publish profiles
         while True:
-            profile_urls = await scrape_linkedin_feed(page)
+            # Consume post instructions
+            post_inst = self.consume_post_instruction()
+            if post_inst:
+                self.execute_post(post_inst)
             
-            for url in profile_urls:
-                profile_data = await scrape_profile(page, url)
-                publish_profile(profile_data)
+            # Consume message instructions
+            msg_inst = self.consume_message_instruction()
+            if msg_inst:
+                self.execute_message(msg_inst)
             
-            await asyncio.sleep(10)  # Wait before next scrape
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            # Brief pause
+            import time
+            time.sleep(1)
 ```
 
----
+### Step 3: Run Both Systems
 
-## Integration Checklist
+**Terminal 1 - Backend (Agents):**
+```bash
+cd backend
+python3 main.py
+```
 
-- [ ] Install Redis client library (Python: `redis`, Node.js: `ioredis`)
-- [ ] Connect to Redis (localhost:6379)
-- [ ] Publish scraped profiles to `profiles:scraped` queue
-- [ ] Consume from `playwright:post` queue and execute posts
-- [ ] Consume from `playwright:message` queue and execute connections/messages
-- [ ] Handle errors gracefully
-- [ ] Add logging for debugging
+**Terminal 2 - Patchright (Scraper):**
+```bash
+cd patchright
+python3 find_waterloo_students.py
+# or
+python3 linkedin_scraper.py
+```
 
----
+**Terminal 3 - Instruction Consumer (Optional):**
+```bash
+cd patchright
+python3 instruction_consumer.py
+```
+
+## Data Flow
+
+```
+1. Patchright scrapes profile
+   ↓
+2. Publishes to Redis: profiles:scraped
+   ↓
+3. Backend agents process profile
+   ↓
+4. Agents publish instructions to Redis:
+   - playwright:post (for posts)
+   - playwright:message (for messages/connections)
+   ↓
+5. Patchright consumes instructions
+   ↓
+6. Executes with Playwright
+```
+
+## Queue Formats
+
+### Input: `profiles:scraped`
+
+```json
+{
+  "task_id": "profiles:scraped:2025-11-08T16:47:09",
+  "queue": "profiles:scraped",
+  "instruction": {
+    "action": "process_profile",
+    "profile_url": "https://www.linkedin.com/in/...",
+    "profile_data": {
+      "url": "...",
+      "name": "...",
+      "headline": "...",
+      "bio": "...",
+      "experience": [...],
+      "education": [...]
+    }
+  }
+}
+```
+
+### Output: `playwright:post`
+
+```json
+{
+  "task_id": "playwright:post:...",
+  "instruction": {
+    "action": "publish_post",
+    "content": "Just finished building...",
+    "metadata": {...}
+  }
+}
+```
+
+### Output: `playwright:message`
+
+```json
+{
+  "task_id": "playwright:message:...",
+  "instruction": {
+    "action": "send_message",  // or "connect_only"
+    "profile_url": "https://www.linkedin.com/in/...",
+    "message": "Hey! Saw you're in 2A too..."
+  }
+}
+```
+
+## Quick Integration Checklist
+
+- [ ] Add Redis dependency to `patchright/requirements.txt`
+- [ ] Add `publish_profile_to_redis()` method to `LinkedInScraper`
+- [ ] Modify `scrape_profile()` to publish after scraping
+- [ ] Create `instruction_consumer.py` for consuming instructions
+- [ ] Test Redis connection from Patchright
+- [ ] Test publishing a profile to Redis
+- [ ] Test consuming an instruction from Redis
 
 ## Testing
 
-### Test Profile Publishing
+1. **Test Redis connection:**
+   ```python
+   import redis
+   r = redis.Redis(host='localhost', port=6379, db=0)
+   r.ping()  # Should return True
+   ```
 
-```python
-import redis
-import json
+2. **Test publishing:**
+   ```python
+   # From Patchright
+   test_profile = {"url": "https://...", "name": "Test", ...}
+   scraper.publish_profile_to_redis(test_profile)
+   ```
 
-redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-
-# Test profile
-test_profile = {
-    "url": "https://www.linkedin.com/in/test/",
-    "name": "Test User",
-    "headline": "Test Headline",
-    "bio": "Test bio",
-    "experience": [],
-    "education": []
-}
-
-# Publish to queue
-redis_client.lpush("profiles:scraped", json.dumps({
-    "task_id": "test-123",
-    "queue": "profiles:scraped",
-    "instruction": {
-        "action": "process_profile",
-        "profile_url": test_profile["url"],
-        "profile_data": test_profile,
-        "timestamp": "2025-11-08T12:00:00"
-    },
-    "status": "pending"
-}))
-
-print("✅ Test profile published!")
-```
-
-### Check Queue Status
-
-```python
-# Check queue length
-post_queue_length = redis_client.llen("playwright:post")
-message_queue_length = redis_client.llen("playwright:message")
-profiles_queue_length = redis_client.llen("profiles:scraped")
-
-print(f"Post queue: {post_queue_length}")
-print(f"Message queue: {message_queue_length}")
-print(f"Profiles queue: {profiles_queue_length}")
-```
-
----
-
-## Key Points
-
-1. **Redis is the communication layer** - All data flows through Redis queues
-2. **Playwright publishes profiles** - Scraped data goes to `profiles:scraped`
-3. **Playwright consumes instructions** - Reads from `playwright:post` and `playwright:message`
-4. **Backend agents process automatically** - They consume from `profiles:scraped` and publish instructions
-5. **Terminal feedback** - Backend shows all actions in real-time
-
----
+3. **Check queue:**
+   ```bash
+   redis-cli LLEN profiles:scraped
+   redis-cli LLEN playwright:post
+   redis-cli LLEN playwright:message
+   ```
 
 ## Next Steps
 
-1. Set up Redis connection in your Playwright code
-2. Implement profile publishing function
-3. Implement instruction consumption functions
-4. Test with a single profile
-5. Integrate with your scraping loop
-
----
-
-## Support
-
-- Check backend terminal for agent actions and data flow
-- Use `redis-cli` to inspect queues: `redis-cli LLEN profiles:scraped`
-- Check backend logs for errors
-- Use the test script: `python3 test_profile_data.py`
-
+1. Integrate Redis publishing into Patchright scraper
+2. Create instruction consumer in Patchright
+3. Test end-to-end flow
+4. Add error handling and retries
+5. Add rate limiting
