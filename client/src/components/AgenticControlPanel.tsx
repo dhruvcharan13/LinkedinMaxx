@@ -195,7 +195,7 @@ export function AgenticControlPanel() {
       {/* Header */}
       <div className="px-4 py-4 border-b border-gray-200 bg-[#0073b1]">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-sm text-white font-semibold">LinkedInGPT Dashboard</h2>
+          <h2 className="text-4xl text-white font-bold">LinkedInGPT Dashboard</h2>
           <button className="p-1 hover:bg-white/10 rounded transition-colors">
             <Settings className="w-4 h-4 text-white" />
           </button>
