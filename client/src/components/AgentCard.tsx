@@ -12,6 +12,8 @@ interface AgentSuggestion {
   confidence: number;
   timestamp: Date;
   status: 'pending' | 'approved' | 'rejected' | 'executed';
+  owner?: string; // Owner of the post/profile
+  url?: string; // URL of the post/profile
 }
 
 interface AgentCardProps {
@@ -65,8 +67,7 @@ export function AgentCard({
       {/* Card Header */}
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2">
-          <span className="text-base">{suggestion.agentEmoji}</span>
-          <span className="text-xs text-gray-900">{suggestion.agentName}</span>
+          <span className="text-xs text-gray-900 font-semibold">{suggestion.agentName}</span>
         </div>
         <span className={`text-xs ${getConfidenceTextColor(suggestion.confidence)}`}>
           {suggestion.confidence}%
@@ -84,6 +85,34 @@ export function AgentCard({
           />
         </div>
       </div>
+
+      {/* Owner and URL Information */}
+      {((suggestion.owner && suggestion.owner.trim()) || (suggestion.url && suggestion.url.trim())) && (
+        <div className="mb-2.5 space-y-1 text-xs text-gray-600">
+          {suggestion.owner && suggestion.owner.trim() && (
+            <div className="flex items-center gap-1">
+              <span className="font-medium text-gray-700">Owner:</span>
+              <span>{suggestion.owner}</span>
+            </div>
+          )}
+          {suggestion.url && suggestion.url.trim() && (
+            <div className="flex items-start gap-1">
+              <span className="font-medium text-gray-700 whitespace-nowrap">URL:</span>
+              <a 
+                href={suggestion.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 underline break-all text-xs"
+                title={suggestion.url}
+              >
+                {suggestion.url.length > 50 
+                  ? `${suggestion.url.substring(0, 50)}...` 
+                  : suggestion.url}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Suggestion Content */}
       <div className="mb-2.5">

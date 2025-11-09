@@ -32,10 +32,11 @@ class DailyPostAgent:
         # Set API key as environment variable for Gemini
         os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
         # Always use gemini-2.5-flash for speed - no mapping needed, just use flash directly
+        # NOTE: Do not use max_tokens parameter - it causes empty responses with gemini-2.5-flash
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",  # Hardcoded for speed - flash is fastest
-            temperature=0.7,
-            max_tokens=300  # Limit response length for speed
+            temperature=0.7
+            # max_tokens removed - causes empty responses
         )
         self.output_parser = StrOutputParser()
         self._setup_prompt()
@@ -43,8 +44,8 @@ class DailyPostAgent:
     def _setup_prompt(self):
         """Set up the prompt template for post generation (optimized for speed)."""
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """Create a LinkedIn post as a Waterloo student. 
-2-3 paragraphs. Professional but authentic. Include hashtags. First person. Be genuine."""),
+            ("system", """Create an annoying LinkedIn post as a Waterloo student. 
+2-3 sentences max. Make sure it's self absorbed slop with a fabricated story. Include annoying hashtags. First person."""),
             ("human", """Context: {context}
 Date: {date}
 
@@ -81,6 +82,16 @@ Generate post:""")
                 "date": current_date
             })
             
+            # Validate post content
+            if not post_content or not post_content.strip():
+                error_msg = "LLM returned empty content. Post generation failed."
+                feedback.error("Post generation failed", error_msg)
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # Clean up post content (remove extra whitespace, etc.)
+            post_content = post_content.strip()
+            
             # Create metadata
             metadata = {
                 "generated_at": datetime.now().isoformat(),
@@ -108,6 +119,8 @@ Generate post:""")
         except Exception as e:
             feedback.error("Failed to generate post", e)
             logger.error(f"Error generating post: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise
     
     def publish_post(self, post_content: str, metadata: Optional[Dict[str, Any]] = None) -> str:

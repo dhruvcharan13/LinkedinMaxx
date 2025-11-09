@@ -1,0 +1,62 @@
+{
+  "messages": [
+    {
+      "url": "https://www.linkedin.com/in/demo-dating-match/",
+      "name": "Alex Chen",
+      "content": "Hey! Saw you're in 2A CS - same stream here! Want to grab coffee and compare co-op experiences? ☕",
+      "agent_name": "Dating Agent",
+      "agent_emoji": "💕",
+      "metadata": {
+        "action": "send_message",
+        "classification": "waterloo_student",
+        "estimated_stream": "2A",
+        "user_stream": "2A",
+        "same_stream": true,
+        "confidence": 0.95,
+        "reasoning": "Profile shows 2A Computer Science at University of Waterloo"
+      }
+    },
+    {
+      "url": "https://www.linkedin.com/in/demo-recruiter/",
+      "name": "Sarah Johnson",
+      "content": "Hi Sarah, I'm a Computer Science student at the University of Waterloo and I noticed you're recruiting for software engineering roles. I'd love to connect and learn more about opportunities at your company!",
+      "agent_name": "Messaging Agent",
+      "agent_emoji": "💬",
+      "metadata": {
+        "action": "send_message",
+        "classification": "recruiter",
+        "confidence": 0.90,
+        "reasoning": "Profile shows Talent Acquisition role with focus on software engineering"
+      }
+    }
+  ],
+  "comments": [
+    {
+      "url": "https://www.linkedin.com/feed/update/urn:li:activity:1234567890/",
+      "name": "Tech Innovation Post",
+      "content": "Great insights on AI and automation! As a CS student at Waterloo, I'm particularly interested in how these technologies are transforming the industry. Thanks for sharing! 🚀",
+      "agent_name": "Comment Agent",
+      "agent_emoji": "💬",
+      "metadata": {
+        "action": "send_comment",
+        "classification": "relevant",
+        "confidence": 0.85,
+        "reasoning": "Post is about AI/tech, relevant to CS student interests"
+      }
+    },
+    {
+      "url": "https://www.linkedin.com/feed/update/urn:li:activity:0987654321/",
+      "name": "Career Advice Post",
+      "content": "This is exactly the kind of career advice I needed! As a student navigating co-op and internships, these tips are incredibly valuable. Thank you! 🙏",
+      "agent_name": "Comment Agent",
+      "agent_emoji": "💬",
+      "metadata": {
+        "action": "send_comment",
+        "classification": "relevant",
+        "confidence": 0.90,
+        "reasoning": "Post is about career advice, highly relevant to students"
+      }
+    }
+  ]
+}
+

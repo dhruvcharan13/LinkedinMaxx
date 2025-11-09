@@ -286,11 +286,11 @@ async def orchestrate_workflow(request: StartScrollingRequest):
                 feedback.error("Daily post generation failed", e)
                 logger.error(f"Error generating daily post: {e}")
         
-        # Step 2: Process scraped profiles from queue
-        feedback.agent_action("Orchestrator", "Step 2: Starting profile processing loop...")
+        # Step 2: Process scraped profiles and posts from queues
+        feedback.agent_action("Orchestrator", "Step 2: Starting profile and post processing loop...")
         
         while is_running:
-            # Get next scraped profile from queue
+            # Process scraped profiles
             profile_instruction = redis_client.get_instruction("profiles:scraped")
             
             if profile_instruction:
@@ -299,52 +299,81 @@ async def orchestrate_workflow(request: StartScrollingRequest):
                     profile_url = profile_instruction.get("instruction", {}).get("profile_url", "")
                     
                     if profile_url and profile_data:
-                        feedback.agent_action("Orchestrator", f"Processing profile: {profile_url[:50]}...")
-                        
-                        # Check if profile already has a type from Patchright
+                        profile_name = profile_data.get("name", "Unknown")
                         profile_type = profile_data.get("type", "").lower()
+                        feedback.agent_action("Orchestrator", f"Processing profile: {profile_name} ({profile_type or 'unknown'})")
                         
-                        if profile_type == "waterloo":
-                            # Skip messaging agent, go directly to dating agent
-                            feedback.agent_action("Orchestrator", "Profile pre-classified as Waterloo, routing to Dating Agent")
-                            result = {
-                                "profile_url": profile_url,
-                                "classification": {
-                                    "category": "waterloo_student",
-                                    "confidence": 1.0,
-                                    "reasoning": "Pre-classified by Patchright"
-                                },
-                                "action": "route_to_dating_agent",
-                                "processed_at": datetime.now().isoformat()
-                            }
-                            # Process with dating agent
-                            dating_result = dating_agent.process_waterloo_student(profile_url, profile_data)
-                            result["dating_agent_result"] = dating_result
+                        try:
+                            # Check if profile already has a type from Patchright
+                            if profile_type == "waterloo":
+                                # Skip messaging agent, go directly to dating agent
+                                feedback.agent_action("Orchestrator", f"Profile {profile_name} pre-classified as Waterloo, routing to Dating Agent")
+                                # Process with dating agent (this will queue tasks)
+                                result = dating_agent.process_waterloo_student(profile_url, profile_data)
+                                feedback.agent_action("Orchestrator", f"✅ Dating agent processed {profile_name}: {result.get('action', 'unknown')}")
+                                
+                            elif profile_type == "recruiter":
+                                # Process as recruiter (this will queue tasks)
+                                feedback.agent_action("Orchestrator", f"Profile {profile_name} pre-classified as Recruiter, processing with Messaging Agent")
+                                result = messaging_agent.process_profile(profile_url, profile_data)
+                                feedback.agent_action("Orchestrator", f"✅ Messaging agent processed {profile_name}: {result.get('action', 'unknown')}")
+                                
+                            elif profile_type in ["cofounder", "co-founder", "founder"]:
+                                # Process as co-founder (this will queue tasks)
+                                feedback.agent_action("Orchestrator", f"Profile {profile_name} pre-classified as Co-founder, processing with Messaging Agent")
+                                result = messaging_agent.process_profile(profile_url, profile_data)
+                                feedback.agent_action("Orchestrator", f"✅ Messaging agent processed {profile_name}: {result.get('action', 'unknown')}")
+                                
+                            else:
+                                # Process through messaging agent (will classify if no type)
+                                feedback.agent_action("Orchestrator", f"Profile {profile_name} has no pre-classification, processing with Messaging Agent")
+                                result = messaging_agent.process_profile(profile_url, profile_data)
+                                
+                                # If routed to dating agent, process it
+                                if result.get("action") == "route_to_dating_agent":
+                                    feedback.agent_action("Orchestrator", f"Messaging agent routed {profile_name} to Dating Agent")
+                                    dating_result = dating_agent.process_waterloo_student(profile_url, profile_data)
+                                    result["dating_agent_result"] = dating_result
+                                    feedback.agent_action("Orchestrator", f"✅ Dating agent processed {profile_name}: {dating_result.get('action', 'unknown')}")
+                                else:
+                                    feedback.agent_action("Orchestrator", f"✅ Messaging agent processed {profile_name}: {result.get('action', 'unknown')}")
                             
-                        elif profile_type == "recruiter":
-                            # Process as recruiter
-                            result = messaging_agent.process_profile(profile_url, profile_data)
-                            # Should generate recruiter message
-                            
-                        elif profile_type in ["cofounder", "co-founder", "founder"]:
-                            # Process as co-founder
-                            result = messaging_agent.process_profile(profile_url, profile_data)
-                            # Should generate co-founder message
-                            
-                        else:
-                            # Process through messaging agent (will classify if no type)
-                            result = messaging_agent.process_profile(profile_url, profile_data)
-                            
-                            # If routed to dating agent, process it
-                            if result.get("action") == "route_to_dating_agent":
-                                dating_result = dating_agent.process_waterloo_student(profile_url, profile_data)
-                                result["dating_agent_result"] = dating_result
-                        
-                        logger.info(f"Profile processed: {result}")
+                            # Log the result (including task_id if one was created)
+                            task_id = result.get("task_id") or result.get("dating_agent_result", {}).get("task_id")
+                            if task_id:
+                                logger.info(f"✅ Profile {profile_name} processed successfully. Task ID: {task_id}")
+                            else:
+                                logger.info(f"✅ Profile {profile_name} processed: {result.get('action', 'unknown')} (no task queued)")
+                                
+                        except Exception as e:
+                            feedback.error(f"Error processing profile {profile_name}", e)
+                            logger.error(f"Error processing profile {profile_url}: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
                     
                 except Exception as e:
                     feedback.error("Error processing profile", e)
                     logger.error(f"Error processing profile: {e}")
+            
+            # Process scraped posts for comments
+            post_instruction = redis_client.get_instruction("posts:scraped")
+            
+            if post_instruction:
+                try:
+                    post_data = post_instruction.get("instruction", {}).get("post_data", {})
+                    post_url = post_instruction.get("instruction", {}).get("post_url", "")
+                    
+                    if post_url and post_data:
+                        feedback.agent_action("Orchestrator", f"Processing post: {post_url[:50]}...")
+                        
+                        # Process post with comment agent
+                        result = comment_agent.process_post(post_url, post_data)
+                        
+                        logger.info(f"Post processed: {result}")
+                    
+                except Exception as e:
+                    feedback.error("Error processing post", e)
+                    logger.error(f"Error processing post: {e}")
             
             # Brief sleep to avoid tight loop
             await asyncio.sleep(0.5)
@@ -373,12 +402,22 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 
+@app.on_event("startup")
+async def startup():
+    """Startup event handler."""
+    # Don't auto-start workflow - let orchestrator trigger it
+    # The workflow will start when orchestrator calls /api/start-scrolling
+    feedback.agent_action("System", "Backend startup complete")
+    logger.info("✅ Backend started - workflow will start when orchestrator triggers it")
+
+
 if __name__ == "__main__":
     port = int(os.getenv("BACKEND_PORT", 8000))
     
     feedback.agent_action("System", f"Starting LinkedInMaxx backend on port {port}")
     logger.info(f"🚀 LinkedInMaxx Backend starting on http://localhost:{port}")
     logger.info(f"📡 API docs available at http://localhost:{port}/docs")
+    logger.info(f"📝 Workflow will start when orchestrator triggers post generation")
     
     uvicorn.run(
         "main:app",

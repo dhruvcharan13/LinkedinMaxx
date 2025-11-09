@@ -8,6 +8,7 @@ No dependency on scraping functionality.
 import time
 import random
 from pathlib import Path
+from typing import Dict, Any
 from patchright.sync_api import sync_playwright
 
 
@@ -26,28 +27,28 @@ class LinkedInPoster:
         self.page.click(selector)
         time.sleep(random.uniform(0.5, 1.0))
         
-        # Split into words for more realistic pausing
+        # Fast typing for demo (reduced delays)
         words = text.split(' ')
         
         for i, word in enumerate(words):
             # Type each character in the word
             for char in word:
                 self.page.keyboard.type(char)
-                # Fast typing within a word
-                time.sleep(random.uniform(0.05, 0.15))
+                # Very fast typing within a word (reduced from 0.05-0.15 to 0.01-0.03)
+                time.sleep(random.uniform(0.01, 0.03))
             
             # Add space after word (except last word)
             if i < len(words) - 1:
                 self.page.keyboard.type(' ')
-                # Longer pause between words (thinking/reading)
-                time.sleep(random.uniform(0.2, 0.5))
+                # Shorter pause between words (reduced from 0.2-0.5 to 0.05-0.1)
+                time.sleep(random.uniform(0.05, 0.1))
             
-            # Occasional longer pause (simulating thinking)
-            if random.random() < 0.15:  # 15% chance
-                time.sleep(random.uniform(0.5, 1.2))
+            # Occasional longer pause (reduced frequency and duration)
+            if random.random() < 0.05:  # Reduced from 15% to 5% chance
+                time.sleep(random.uniform(0.2, 0.4))  # Reduced from 0.5-1.2 to 0.2-0.4
         
-        # Final pause after finishing typing
-        time.sleep(random.uniform(1.0, 2.0))
+        # Final pause after finishing typing (reduced from 1.0-2.0 to 0.3-0.5)
+        time.sleep(random.uniform(0.3, 0.5))
     
     def __init__(self, headless: bool = False, user_data_dir: str = "../browser_data"):
         """
@@ -120,11 +121,16 @@ class LinkedInPoster:
         print("CREATING LINKEDIN POST")
         print("="*60)
         
-        # Navigate to feed if not already there
+        # Navigate to feed if not already there (but keep same tab)
         if "linkedin.com/feed" not in self.page.url:
             print("→ Navigating to LinkedIn feed...")
             self.page.goto("https://www.linkedin.com/feed", wait_until="load", timeout=30000)
             time.sleep(2)
+        else:
+            # Already on feed, just refresh to ensure we're ready
+            print("→ Already on feed, ensuring page is ready...")
+            self.page.bring_to_front()
+            time.sleep(1)
         
         # Click "Start a post" button
         print("→ Clicking 'Start a post' button...")
@@ -158,8 +164,13 @@ class LinkedInPoster:
             print("Please click 'Start a post' manually, then press ENTER...")
             input()
         
+        # Validate text content before typing
+        if not text or not text.strip():
+            raise ValueError(f"Cannot create post with empty content. Content length: {len(text) if text else 0}")
+        
         # Type the text content (human-like, character by character)
         print("→ Typing post text (human-like)...")
+        print(f"  Content length: {len(text)} characters")
         try:
             # Find the text editor
             editor_selectors = [
@@ -188,14 +199,12 @@ class LinkedInPoster:
             
             if not typed:
                 print("❌ Could not find text editor")
-                print(f"Please type this manually: {text}")
-                input("Press ENTER when done...")
+                raise Exception("Failed to find text editor")
             
-            time.sleep(random.uniform(0.5, 1.5))
+            time.sleep(random.uniform(1.0, 2.0))
         except Exception as e:
             print(f"⚠️  Error typing text: {e}")
-            print(f"Please type this manually: {text}")
-            input("Press ENTER when done...")
+            raise
         
         # Upload image if provided
         if image_path:
@@ -221,9 +230,8 @@ class LinkedInPoster:
                 
                 if not clicked_media:
                     print("❌ Could not find media button")
-                    print("Please click 'Add a photo' manually and upload the image")
-                    print(f"Image path: {image_path}")
-                    input("Press ENTER when done...")
+                    if image_path:
+                        print(f"⚠️  Skipping image upload: {image_path}")
                 else:
                     time.sleep(random.uniform(0.5, 1.0))
                     
@@ -260,23 +268,19 @@ class LinkedInPoster:
                                     continue
                             
                             if not next_clicked:
-                                print("⚠️  Could not find 'Next' button")
-                                print("Please click 'Next' in the image editor manually...")
-                                input("Press ENTER when done...")
+                                print("⚠️  Could not find 'Next' button, continuing...")
                             
                             time.sleep(random.uniform(1.0, 2.0))  # Wait for editor to close
                             
                         except Exception as e:
                             print(f"❌ Could not upload file: {e}")
-                            print(f"Please upload manually: {file_path}")
-                            input("Press ENTER when done...")
+                            print(f"⚠️  Continuing without image...")
                     else:
                         print(f"❌ File not found: {file_path}")
                 
             except Exception as e:
                 print(f"⚠️  Error uploading image: {e}")
-                print(f"Please upload image manually: {image_path}")
-                input("Press ENTER when done...")
+                print(f"⚠️  Continuing without image...")
         
         # Click the bottom "Post" button to publish directly
         print("→ Clicking bottom 'Post' button to publish...")
@@ -309,45 +313,47 @@ class LinkedInPoster:
             
             # Manual fallback if automatic fails
             if not posted:
-                print("\n" + "="*60)
-                print("⚠️  MANUAL INTERVENTION NEEDED")
-                print("="*60)
-                print("Could not find the 'Post' button at the bottom.")
-                print("Please look at the browser window:")
-                print("  1. Find the 'Post' button at the BOTTOM of the modal")
-                print("  2. Click it to publish your post")
-                print("  3. Come back here and press ENTER")
-                input("\nPress ENTER after clicking 'Post'... ")
-                print("✓ Manual Post confirmation received")
+                raise Exception("Failed to find Post button")
             
             time.sleep(random.uniform(3.0, 5.0))  # Wait for post to publish
             
         except Exception as e:
             print(f"⚠️  Error publishing post: {e}")
-            print("Please click the bottom 'Post' button manually...")
-            input("Press ENTER when done...")
+            raise
         
         print("\n✅ Post submitted!")
         print("="*60)
         print("\n⏳ Waiting for LinkedIn to publish your post...")
-        print("Please check your feed to confirm the post appears.")
-        print("(This may take a few seconds)")
-        input("\n✓ Press ENTER once you've confirmed your post is visible... ")
-        print("✓ Post confirmed!")
+        time.sleep(random.uniform(2.0, 4.0))  # Wait for post to appear
+        print("✓ Post published!")
         print("="*60)
         
-        # Ask user if they want to keep browser open
-        print("\n📌 Browser is still open for you to review.")
-        print("You can check your post, edit it, or browse LinkedIn.")
-        close_browser = input("\nType 'close' to close the browser (or press ENTER to keep it open): ").strip().lower()
+        # Stay on feed (don't navigate away) - browser stays open
+        print("\n→ Staying on feed for next task...")
+        time.sleep(1)
+    
+    def execute_post_task(self, instruction: Dict[str, Any]):
+        """
+        Execute a post task from Redis queue.
         
-        if close_browser == 'close':
-            print("✓ Will close browser...")
-        else:
-            print("\n✓ Keeping browser open.")
-            print("When you're ready to close, come back here and press ENTER...")
-            input()
-            print("✓ Closing browser now...")
+        Args:
+            instruction: {
+                "content": "...",
+                "metadata": {...}
+            }
+        """
+        content = instruction.get("content", "")
+        metadata = instruction.get("metadata", {})
+        image_path = metadata.get("image_path")
+        
+        # Validate content
+        if not content or not content.strip():
+            print("⚠️  ERROR: Post content is empty!")
+            print(f"   Instruction keys: {list(instruction.keys())}")
+            print(f"   Instruction: {instruction}")
+            raise ValueError("Cannot post empty content. Post generation may have failed.")
+        
+        self.create_post(text=content, image_path=image_path)
     
     def close(self):
         """Close the browser."""
@@ -365,62 +371,4 @@ class LinkedInPoster:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
-
-
-def main():
-    """Example usage of LinkedIn Poster."""
-    print("="*60)
-    print("LINKEDIN POSTER")
-    print("="*60)
-    print("Post text and images to LinkedIn")
-    print("="*60 + "\n")
-    
-    # Get post content
-    text = input("Enter your post text: ").strip()
-    if not text:
-        text = "Test post from automation script!"
-    
-    # Get the directory where THIS script is located
-    script_dir = Path(__file__).parent.absolute()
-    print(f"\n📁 Script directory: {script_dir}")
-    print("   (Images will be looked up relative to this directory)")
-    
-    image_path = input("\nEnter image path (or press ENTER to skip): ").strip()
-    if image_path:
-        # Try to resolve the path
-        image_path_obj = Path(image_path)
-        
-        # If it's not absolute, look relative to the script directory
-        if not image_path_obj.is_absolute():
-            full_path = (script_dir / image_path).absolute()
-        else:
-            full_path = image_path_obj.absolute()
-        
-        if not full_path.exists():
-            print(f"\n❌ Image not found!")
-            print(f"   Looking for: {full_path}")
-            print(f"\n💡 Tips:")
-            print(f"   - Put image in script directory: {script_dir}")
-            print(f"   - Or use full path: /Users/username/Desktop/image.png")
-            print(f"   - Or drag & drop the file into this terminal")
-            image_path = None
-        else:
-            print(f"✓ Found image: {full_path.name}")
-            image_path = str(full_path)
-    
-    # Create post
-    with LinkedInPoster(headless=False) as poster:
-        poster.login(manual=True)
-        poster.create_post(text=text, image_path=image_path if image_path else None)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
-    except Exception as e:
-        print(f"\n\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
 

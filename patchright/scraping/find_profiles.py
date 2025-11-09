@@ -217,7 +217,7 @@ def main():
                 print(f"   [{checked}] {url}... ", end="", flush=True)
                 
                 try:
-                    # Scrape profile
+                    # Scrape profile (this automatically publishes to Redis if available)
                     profile = scraper.scrape_profile(url)
                     
                     if not profile or "error" in profile:
@@ -225,8 +225,15 @@ def main():
                         time.sleep(random.uniform(0.3, 0.7))
                         continue
                     
-                    # Classify profile
+                    # Classify profile (scrape_profile already adds type field, but we classify again for consistency)
                     profile_type = ProfileClassifier.classify_profile(profile)
+                    
+                    # Ensure type field is set (scrape_profile should have done this, but double-check)
+                    if 'type' not in profile and 'Type' in profile:
+                        profile['type'] = profile['Type'].lower()
+                    elif 'type' not in profile:
+                        profile['type'] = profile_type or 'other'
+                        profile['Type'] = profile_type or 'other'
                     
                     if profile_type == "waterloo":
                         if len(waterloo_profiles) < target_waterloo:

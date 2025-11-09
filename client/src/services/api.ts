@@ -43,17 +43,12 @@ export interface ApiResponse<T> {
  * Get all pending tasks from the backend
  */
 export async function getPendingTasks(): Promise<PendingTask[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/tasks/pending`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch pending tasks: ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.tasks || [];
-  } catch (error) {
-    console.error('Error fetching pending tasks:', error);
-    return [];
+  const response = await fetch(`${API_BASE_URL}/api/tasks/pending`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch pending tasks: ${response.statusText} (${response.status})`);
   }
+  const data = await response.json();
+  return data.tasks || [];
 }
 
 /**

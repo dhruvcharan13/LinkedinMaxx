@@ -46,7 +46,7 @@ class MessagingAgent:
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",  # Hardcoded for speed - flash is fastest
             temperature=0.6,  # Lower temperature for faster, more deterministic responses
-            max_tokens=200  # Limit response length for speed
+            # max_tokens removed - causes empty responses with gemini-2.5-flash
         )
         self.output_parser = JsonOutputParser(pydantic_object=ProfileClassification)
         self._setup_prompts()
@@ -69,8 +69,13 @@ Classify and return valid JSON only.""")
         # Message generation prompts (optimized for speed - concise)
         self.recruiter_message_prompt = ChatPromptTemplate.from_messages([
             ("system", """Write a 2-3 sentence LinkedIn message to a recruiter. 
-Professional, friendly. Mention you're a Waterloo student. Ask about internships."""),
-            ("human", "Recruiter profile: {bio}\nWrite message:")
+Professional, friendly. Mention you're a Waterloo student. Ask about internships.
+IMPORTANT: Use the actual recruiter name and company name provided. Do NOT use placeholders like [Recruiter Name] or [Company Name].
+Start with "Hi [NAME]," where [NAME] is the actual recruiter's first name."""),
+            ("human", """Recruiter name: {name}
+Company: {company}
+Recruiter profile: {bio}
+Write message using the actual name and company:""")
         ])
         
         self.cofounder_message_prompt = ChatPromptTemplate.from_messages([
@@ -163,11 +168,55 @@ Show you reviewed their profile. Express interest in startups."""),
         """Generate a message for a recruiter."""
         feedback.agent_action("Messaging Agent", "Generating recruiter message...")
         
+        # Extract recruiter name
+        name = profile_data.get("name", "")
+        # Extract first name only (for greeting)
+        first_name = name.split()[0] if name else "there"
+        
+        # Extract company from experience
+        company = "your company"
+        experience = profile_data.get("experience", [])
+        if isinstance(experience, list) and len(experience) > 0:
+            # Try to get company from first experience entry
+            first_exp = experience[0]
+            if isinstance(first_exp, dict):
+                company = first_exp.get("company", first_exp.get("location", "your company"))
+            elif isinstance(first_exp, str):
+                # If experience is a string, try to parse it
+                if " at " in first_exp:
+                    company = first_exp.split(" at ")[-1].split(",")[0].strip()
+        elif isinstance(experience, str):
+            # If experience is a string
+            if " at " in experience:
+                company = experience.split(" at ")[-1].split(",")[0].strip()
+        
+        # Also check headline for company
+        headline = profile_data.get("headline", "")
+        if " at " in headline and company == "your company":
+            company = headline.split(" at ")[-1].split("|")[0].split(",")[0].strip()
+        
         bio = profile_data.get("bio", "")
         chain = self.recruiter_message_prompt | self.llm | StrOutputParser()
         
         try:
-            message = chain.invoke({"bio": bio})
+            message = chain.invoke({
+                "name": first_name,
+                "company": company,
+                "bio": bio
+            })
+            
+            # Post-process: Replace any remaining placeholders with actual values
+            message = message.replace("[Recruiter Name]", first_name)
+            message = message.replace("[recruiter name]", first_name)
+            message = message.replace("[NAME]", first_name)
+            message = message.replace("[name]", first_name)
+            message = message.replace("[Company Name]", company)
+            message = message.replace("[company name]", company)
+            message = message.replace("[COMPANY]", company)
+            message = message.replace("[company]", company)
+            message = message.replace("[Your Name]", "I")
+            message = message.replace("[your name]", "I")
+            
             logger.info(f"Generated recruiter message: {message[:100]}...")
             return message
         except Exception as e:

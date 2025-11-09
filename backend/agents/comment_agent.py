@@ -43,7 +43,7 @@ class CommentAgent:
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",  # Hardcoded for speed - flash is fastest
             temperature=0.7,
-            max_tokens=150  # Comments should be concise
+            # max_tokens removed - causes empty responses with gemini-2.5-flash
         )
         self.output_parser = JsonOutputParser(pydantic_object=CommentDecision)
         self.str_parser = StrOutputParser()
@@ -72,13 +72,10 @@ Analyze and return valid JSON only.""")
         
         # Comment generation prompt (optimized for speed)
         self.comment_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Generate a LinkedIn comment for a post. Return only the comment text.
+            ("system", """Generate a LinkedIn comment for a post. Return only the comment text. Make sure it's a somewhat self absorbed comment that makes the post about the commenter..
 Requirements:
 - 1-2 sentences maximum
-- Professional but engaging
-- Add value or show genuine interest
 - Relevant to the post content
-- Appropriate for LinkedIn
 
 Return only the comment text, no additional explanation."""),
             ("human", """Post:

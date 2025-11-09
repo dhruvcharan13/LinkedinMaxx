@@ -9,6 +9,7 @@ import time
 import random
 import json
 from pathlib import Path
+from typing import Dict, Any
 from patchright.sync_api import sync_playwright
 
 
@@ -250,14 +251,11 @@ class LinkedInCommenter:
             
             if not typed:
                 print("⚠️  Could not find comment input")
-                print(f"Please type manually: {comment}")
+                raise Exception("Failed to find comment input")
             
         except Exception as e:
             print(f"⚠️  Error typing comment: {e}")
-            print(f"Please type manually: {comment}")
-        
-        # Manual checkpoint before posting
-        input("\nPress ENTER to post the comment... ")
+            raise
         
         # STEP 5: Click "Post" button
         print("\n→ Posting comment...")
@@ -291,22 +289,17 @@ class LinkedInCommenter:
                     continue
             
             if not posted:
-                print("⚠️  Could not find Comment submit button")
-                print("Please click the 'Comment' button manually...")
-                input("Press ENTER once clicked... ")
+                raise Exception("Failed to find Comment submit button")
             
-            # Wait for comment to post and let user verify
+            # Wait for comment to post
             time.sleep(random.uniform(2.0, 3.0))
-            print("\n⏳ Waiting for comment to post...")
-            print("Please verify your comment appears below the post.")
-            input("\n✓ Press ENTER once you've confirmed your comment is visible... ")
+            print("✓ Comment posted!")
             
         except Exception as e:
             print(f"⚠️  Error posting comment: {e}")
-            print("Please click 'Post' manually...")
-            input("Press ENTER once posted... ")
+            raise
         
-        # STEP 6: Return to home page
+        # STEP 6: Return to home page (keep browser open)
         print("\n→ Returning to home page...")
         try:
             self.page.goto("https://www.linkedin.com/feed", wait_until="load", timeout=30000)
@@ -317,19 +310,21 @@ class LinkedInCommenter:
         
         print("\n✅ Comment flow complete!")
         print("="*60)
+        print("→ Browser staying open for next task...")
+    
+    def execute_comment_task(self, instruction: Dict[str, Any]):
+        """
+        Execute a comment task from Redis queue.
         
-        # Ask if user wants to keep browser open
-        print("\n📌 Browser is still open for you to review.")
-        print("You can check the comment, edit it, or browse LinkedIn.")
-        close_browser = input("\nType 'close' to close the browser (or press ENTER to keep it open): ").strip().lower()
-        
-        if close_browser == 'close':
-            print("✓ Will close browser...")
-        else:
-            print("\n✓ Keeping browser open.")
-            print("When you're ready to close, come back here and press ENTER...")
-            input()
-            print("✓ Closing browser now...")
+        Args:
+            instruction: {
+                "post_url": "...",
+                "comment": "..."
+            }
+        """
+        post_url = instruction["post_url"]
+        comment = instruction["comment"]
+        self.post_comment(post_url, comment)
     
     def close(self):
         """Close the browser."""
@@ -347,55 +342,4 @@ class LinkedInCommenter:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
-
-
-def main():
-    """Example usage of LinkedIn Commenter."""
-    print("="*60)
-    print("LINKEDIN COMMENTER")
-    print("="*60)
-    print("Post comments on LinkedIn posts with stealth")
-    print("="*60 + "\n")
-    
-    # Load test comment
-    script_dir = Path(__file__).parent.absolute()
-    test_file = script_dir / "test_comment.json"
-    
-    if test_file.exists():
-        with open(test_file, 'r') as f:
-            test_data = json.load(f)
-        
-        print(f"📋 Loaded test comment:")
-        print(f"   Post: {test_data.get('post_author', 'Unknown')}'s post")
-        print(f"   URL: {test_data.get('post_url', '')[:80]}...")
-        print(f"   Comment: {test_data.get('comment', 'No comment')[:60]}...")
-        print()
-        
-        use_test = input("Use test comment? (y/n): ").strip().lower()
-        if use_test == 'y':
-            post_url = test_data['post_url']
-            comment = test_data['comment']
-        else:
-            post_url = input("\nEnter post URL: ").strip()
-            comment = input("Enter comment: ").strip()
-    else:
-        print("No test comment found. Enter comment details:")
-        post_url = input("\nPost URL: ").strip()
-        comment = input("Comment: ").strip()
-    
-    # Post comment
-    with LinkedInCommenter(headless=False) as commenter:
-        commenter.login(manual=True)
-        commenter.post_comment(post_url, comment)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
-    except Exception as e:
-        print(f"\n\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
 

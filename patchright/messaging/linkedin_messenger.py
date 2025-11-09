@@ -9,6 +9,7 @@ import time
 import random
 import json
 from pathlib import Path
+from typing import Dict, Any
 from patchright.sync_api import sync_playwright
 
 
@@ -94,21 +95,91 @@ class LinkedInMessenger:
     def login(self, manual: bool = True):
         """
         Login to LinkedIn (manual by default).
+        Checks if already logged in and skips prompt if so.
         
         Args:
             manual: If True, waits for user to log in manually
         """
         print("\nNavigating to LinkedIn...")
         self.page.goto("https://www.linkedin.com", timeout=30000)
+        time.sleep(2)  # Wait for page to load
         
-        if manual:
+        # Check if already logged in
+        current_url = self.page.url
+        is_logged_in = False
+        
+        # Check URL patterns that indicate login
+        if "linkedin.com/feed" in current_url or "linkedin.com/in/" in current_url:
+            is_logged_in = True
+            print("✓ Already logged in (detected feed or profile page)")
+        else:
+            # Check for login indicators on the page
+            try:
+                # Look for feed-specific elements or navigation that only appears when logged in
+                feed_indicator = self.page.locator('nav[aria-label="Main"]').count() > 0
+                if feed_indicator:
+                    is_logged_in = True
+                    print("✓ Already logged in (detected navigation)")
+            except:
+                pass
+        
+        if manual and not is_logged_in:
             print("\n" + "="*60)
             print("MANUAL LOGIN")
             print("="*60)
             print("Please log into LinkedIn in the browser window.")
             print("Once logged in and on the home page, come back here.")
-            input("\nPress ENTER when you're logged in... ")
-            print("✓ Login confirmed")
+            print("="*60)
+            
+            # Wait for user to log in (with error handling)
+            try:
+                # Give user time to see the message and log in
+                print("\n⏳ Waiting for login... (you have 5 minutes)")
+                print("   Tip: After logging in, navigate to https://www.linkedin.com/feed")
+                print("   Then press ENTER in this terminal...")
+                
+                # Use a more robust input method
+                import sys
+                if sys.stdin.isatty():
+                    # Interactive terminal - can use input()
+                    input("\nPress ENTER when you're logged in and on the feed page... ")
+                else:
+                    # Non-interactive - wait and check periodically
+                    print("   Non-interactive terminal detected. Checking login status every 10 seconds...")
+                    for i in range(30):  # Check for 5 minutes (30 * 10 seconds)
+                        time.sleep(10)
+                        self.page.reload(wait_until="load", timeout=30000)
+                        current_url = self.page.url
+                        if "linkedin.com/feed" in current_url:
+                            print("✓ Login detected automatically!")
+                            break
+                        print(f"   Still waiting... ({i+1}/30)")
+                    else:
+                        print("⚠️  Timeout waiting for login. Continuing anyway...")
+            except (EOFError, KeyboardInterrupt):
+                print("\n⚠️  Input interrupted. Checking if already logged in...")
+                # Check one more time
+                time.sleep(2)
+                self.page.reload(wait_until="load", timeout=30000)
+                current_url = self.page.url
+                if "linkedin.com/feed" in current_url or "linkedin.com/in/" in current_url:
+                    print("✓ Login detected! Continuing...")
+                else:
+                    print("⚠️  Not logged in yet. Browser will stay open.")
+                    print("   You can log in manually and the orchestrator will continue.")
+        
+        # Navigate to feed if not already there
+        if "linkedin.com/feed" not in self.page.url:
+            print("\n→ Navigating to feed...")
+            try:
+                self.page.goto("https://www.linkedin.com/feed", wait_until="load", timeout=30000)
+                time.sleep(2)
+                print("✓ On LinkedIn feed")
+            except Exception as e:
+                print(f"⚠️  Could not navigate to feed: {e}")
+                print("   You may need to log in manually in the browser")
+        
+        print("✓ Login flow complete")
     
     def send_message(self, profile_url: str, message: str):
         """
@@ -229,8 +300,6 @@ class LinkedInMessenger:
             print(f"⚠️  Error typing message: {e}")
             print(f"Please type manually: {message}")
         
-        input("\nPress ENTER to send the message... ")
-        
         # STEP 4: Click "Send" button
         print("\n→ Sending message...")
         try:
@@ -262,17 +331,15 @@ class LinkedInMessenger:
             
             if not sent:
                 print("⚠️  Could not find 'Send' button")
-                print("Please click 'Send' manually...")
-                input("Press ENTER once sent... ")
+                raise Exception("Failed to send message")
             
             time.sleep(random.uniform(2.0, 3.0))
             
         except Exception as e:
             print(f"⚠️  Error sending message: {e}")
-            print("Please click 'Send' manually...")
-            input("Press ENTER once sent... ")
+            raise
         
-        # STEP 5: Return to home page
+        # STEP 5: Return to home page (keep browser open)
         print("\n→ Returning to home page...")
         try:
             self.page.goto("https://www.linkedin.com/feed", wait_until="load", timeout=30000)
@@ -283,19 +350,7 @@ class LinkedInMessenger:
         
         print("\n✅ Message flow complete!")
         print("="*60)
-        
-        # Ask if user wants to keep browser open
-        print("\n📌 Browser is still open for you to review.")
-        print("You can check the message, respond, or browse LinkedIn.")
-        close_browser = input("\nType 'close' to close the browser (or press ENTER to keep it open): ").strip().lower()
-        
-        if close_browser == 'close':
-            print("✓ Will close browser...")
-        else:
-            print("\n✓ Keeping browser open.")
-            print("When you're ready to close, come back here and press ENTER...")
-            input()
-            print("✓ Closing browser now...")
+        print("→ Browser staying open for next task...")
     
     def send_connection_request(self, profile_url: str, note: str = None):
         """
@@ -320,7 +375,7 @@ class LinkedInMessenger:
         except Exception as e:
             print(f"⚠️  Error navigating: {e}")
         
-        input("\nPress ENTER once profile loads... ")
+        time.sleep(random.uniform(2.0, 3.0))
         
         # Click "Connect" button
         print("\n→ Looking for 'Connect' button...")
@@ -349,42 +404,93 @@ class LinkedInMessenger:
             
             if not clicked:
                 print("⚠️  Could not find 'Connect' button")
-                print("Please click 'Connect' manually...")
+                raise Exception("Failed to click Connect button")
             
             time.sleep(random.uniform(2.0, 3.0))
             
         except Exception as e:
             print(f"⚠️  Error: {e}")
+            raise
         
         # If note provided, add it
         if note:
             print("\n→ Adding connection note...")
-            print("Please add the note manually if needed:")
-            print(f"   Note: {note}")
-        
-        input("\nPress ENTER to send connection request... ")
+            # Try to find and fill note field
+            try:
+                note_selectors = [
+                    'textarea[name="message"]',
+                    'textarea[placeholder*="Add a note"]',
+                    'div[contenteditable="true"][role="textbox"]'
+                ]
+                for selector in note_selectors:
+                    try:
+                        self.page.wait_for_selector(selector, timeout=3000)
+                        self.page.fill(selector, note)
+                        print(f"✓ Added note: {note[:50]}...")
+                        time.sleep(random.uniform(1.0, 2.0))
+                        break
+                    except:
+                        continue
+            except:
+                print(f"⚠️  Could not add note automatically: {note}")
         
         # Click Send
         print("\n→ Sending connection request...")
         try:
             send_selectors = [
                 'button:has-text("Send")',
-                '[aria-label*="Send"]'
+                '[aria-label*="Send"]',
+                'button.artdeco-button--primary:has-text("Send")'
             ]
             
+            sent = False
             for selector in send_selectors:
                 try:
-                    self.page.click(selector, timeout=5000)
+                    self.page.wait_for_selector(selector, timeout=5000)
+                    self.page.click(selector)
+                    sent = True
                     print("✓ Connection request sent!")
                     break
                 except:
                     continue
-        except:
-            print("Please click 'Send' manually...")
-            input("Press ENTER once sent... ")
+            
+            if not sent:
+                raise Exception("Failed to send connection request")
+                
+            time.sleep(random.uniform(2.0, 3.0))
+        except Exception as e:
+            print(f"⚠️  Error sending connection request: {e}")
+            raise
         
         print("\n✅ Connection request complete!")
         print("="*60)
+    
+    def execute_message_task(self, instruction: Dict[str, Any]):
+        """
+        Execute a message task from Redis queue.
+        
+        Args:
+            instruction: {
+                "profile_url": "...",
+                "name": "...",
+                "message": "...",
+                "action": "send_message" | "connect_only"
+            }
+        """
+        profile_url = instruction["profile_url"]
+        action = instruction.get("action", "send_message")
+        
+        if action == "send_message":
+            message = instruction.get("message", "")
+            if not message:
+                print("⚠️  No message provided, sending connection request instead")
+                self.send_connection_request(profile_url)
+            else:
+                self.send_message(profile_url, message)
+        elif action == "connect_only":
+            self.send_connection_request(profile_url)
+        else:
+            raise ValueError(f"Unknown action: {action}")
     
     def close(self):
         """Close the browser."""
@@ -402,54 +508,3 @@ class LinkedInMessenger:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
-
-
-def main():
-    """Example usage of LinkedIn Messenger."""
-    print("="*60)
-    print("LINKEDIN MESSENGER")
-    print("="*60)
-    print("Send direct messages to LinkedIn profiles")
-    print("="*60 + "\n")
-    
-    # Load test profile
-    script_dir = Path(__file__).parent.absolute()
-    test_file = script_dir / "test_profile.json"
-    
-    if test_file.exists():
-        with open(test_file, 'r') as f:
-            test_data = json.load(f)
-        
-        print(f"📋 Loaded test profile:")
-        print(f"   Name: {test_data.get('name', 'Unknown')}")
-        print(f"   URL: {test_data.get('profile_url', 'Unknown')}")
-        print(f"   Message: {test_data.get('message', 'No message')[:60]}...")
-        print()
-        
-        use_test = input("Use test profile? (y/n): ").strip().lower()
-        if use_test == 'y':
-            profile_url = test_data['profile_url']
-            message = test_data['message']
-        else:
-            profile_url = input("\nEnter profile URL: ").strip()
-            message = input("Enter message: ").strip()
-    else:
-        print("No test profile found. Enter profile details:")
-        profile_url = input("\nProfile URL: ").strip()
-        message = input("Message: ").strip()
-    
-    # Send message
-    with LinkedInMessenger(headless=False) as messenger:
-        messenger.login(manual=True)
-        messenger.send_message(profile_url, message)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
-    except Exception as e:
-        print(f"\n\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()

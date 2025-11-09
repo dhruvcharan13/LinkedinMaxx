@@ -15,6 +15,8 @@ interface AgentSuggestion {
   confidence: number;
   timestamp: Date;
   status: 'pending' | 'approved' | 'rejected' | 'executed';
+  owner?: string; // Owner of the post/profile
+  url?: string; // URL of the post/profile
 }
 
 // Convert PendingTask to AgentSuggestion format
@@ -29,11 +31,13 @@ function convertTaskToSuggestion(task: PendingTask): AgentSuggestion {
     confidence: task.metadata.confidence || 85,
     timestamp: new Date(task.timestamp),
     status: task.status,
+    owner: task.name || undefined, // Owner of the post/profile
+    url: task.url || undefined, // URL of the post/profile
   };
 }
 
 // Development flag: Set to true to always use mock data for UI development
-const FORCE_MOCK_DATA = true;
+const FORCE_MOCK_DATA = false; // Changed to false to use real backend data
 
 export function AgenticControlPanel() {
   const [suggestions, setSuggestions] = useState<AgentSuggestion[]>([]);
@@ -68,26 +72,17 @@ export function AgenticControlPanel() {
         // Try to fetch tasks (this will fail if backend is not running)
         const tasks = await getPendingTasks();
         
-        // Backend is available
+        // Backend is available - always use real data, even if empty
         setUseMockData(false);
-        if (tasks.length > 0) {
-          const converted = tasks.map(convertTaskToSuggestion);
-          setSuggestions(converted);
-        } else {
-          // Backend is available but no tasks - use mock data for development
-          console.warn('Backend returned no tasks, using mock data for development');
-          setUseMockData(true);
-          const converted = mockTasks.map(convertTaskToSuggestion);
-          setSuggestions(converted);
-        }
+        const converted = tasks.map(convertTaskToSuggestion);
+        setSuggestions(converted);
         setError(null);
       } catch (err) {
-        // Backend not available - use mock data automatically
-        console.warn('Backend not available, using mock data for styling');
-        setUseMockData(true);
-        const converted = mockTasks.map(convertTaskToSuggestion);
-        setSuggestions(converted);
-        setError(null); // Don't show error, just use mock data silently for better UX
+        // Backend not available - show error, don't use mock data
+        console.error('Backend not available:', err);
+        setUseMockData(false);
+        setSuggestions([]);
+        setError('Backend unavailable. Make sure the backend is running on http://localhost:8000');
       } finally {
         setIsLoading(false);
       }
@@ -96,10 +91,10 @@ export function AgenticControlPanel() {
     checkBackend();
   }, []);
 
-  // Poll for pending tasks every 2-3 seconds (only if not using mock data)
+  // Poll for pending tasks every 2 seconds (only if not using mock data)
   useEffect(() => {
     if (useMockData) {
-      // Use mock data immediately
+      // Use mock data immediately (only if FORCE_MOCK_DATA is true)
       const converted = mockTasks.map(convertTaskToSuggestion);
       setSuggestions(converted);
       return;
@@ -113,11 +108,9 @@ export function AgenticControlPanel() {
         setError(null);
       } catch (err) {
         console.error('Error fetching tasks:', err);
-        // Fall back to mock data if backend fails
-        setUseMockData(true);
-        setError('Backend unavailable, using mock data');
-        const converted = mockTasks.map(convertTaskToSuggestion);
-        setSuggestions(converted);
+        // Don't fall back to mock data - show error instead
+        setError('Backend unavailable. Make sure the backend is running on http://localhost:8000');
+        setSuggestions([]); // Clear suggestions on error
       }
     };
 
@@ -195,7 +188,7 @@ export function AgenticControlPanel() {
       {/* Header */}
       <div className="px-4 py-4 border-b border-gray-200 bg-[#0073b1]">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-4xl text-white font-bold">LinkedInGPT Dashboard</h2>
+          <h2 className="text-4xl text-white font-bold">LinkedInMaxx Dashboard</h2>
           <button className="p-1 hover:bg-white/10 rounded transition-colors">
             <Settings className="w-4 h-4 text-white" />
           </button>
@@ -210,6 +203,11 @@ export function AgenticControlPanel() {
         {isLoading ? (
           <div className="text-center text-gray-500 py-8">
             Loading tasks...
+          </div>
+        ) : error ? (
+          <div className="text-center text-red-500 py-8">
+            <div className="font-semibold mb-2">⚠️ Connection Error</div>
+            <div className="text-sm">{error}</div>
           </div>
         ) : suggestions.length === 0 ? (
           <div className="text-center text-gray-500 py-8">

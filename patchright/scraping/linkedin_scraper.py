@@ -21,6 +21,20 @@ from stealth_utils import (
     random_break
 )
 
+# Try to import Redis client (optional, for publishing scraped data)
+try:
+    import sys
+    from pathlib import Path
+    # Add parent directory to path to import redis_client
+    parent_dir = Path(__file__).parent.parent.absolute()
+    if str(parent_dir) not in sys.path:
+        sys.path.insert(0, str(parent_dir))
+    from redis_client import PlaywrightRedisClient
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    print("⚠️  Redis client not available. Scraped profiles will only be saved to files.")
+
 
 class LinkedInScraper:
     """LinkedIn scraper with stealth capabilities."""
@@ -45,6 +59,15 @@ class LinkedInScraper:
         # Create data directory
         self.data_dir = Path("./scraped_data")
         self.data_dir.mkdir(exist_ok=True)
+        
+        # Initialize Redis client if available
+        self.redis_client = None
+        if REDIS_AVAILABLE:
+            try:
+                self.redis_client = PlaywrightRedisClient()
+            except Exception as e:
+                print(f"⚠️  Could not initialize Redis client: {e}")
+                self.redis_client = None
     
     def _debug_print(self, message: str):
         """Print debug messages if debug mode is enabled."""
@@ -423,6 +446,28 @@ class LinkedInScraper:
         except Exception as e:
             print(f"⚠️  Error extracting profile data: {e}")
             profile_data["error"] = str(e)
+        
+        # Classify profile and add type field
+        try:
+            # Import from same directory (scraping module)
+            from profile_classifier import ProfileClassifier
+            profile_data = ProfileClassifier.add_type_to_profile(profile_data)
+            # Also add 'type' field (lowercase) for consistency with backend
+            if 'Type' in profile_data:
+                profile_data['type'] = profile_data['Type'].lower()
+            else:
+                profile_data['type'] = 'other'
+        except Exception as e:
+            print(f"⚠️  Error classifying profile: {e}")
+            profile_data["type"] = "other"
+            profile_data["Type"] = "other"
+        
+        # Publish to Redis if available
+        if self.redis_client and "error" not in profile_data:
+            try:
+                self.redis_client.publish_scraped_profile(profile_url, profile_data)
+            except Exception as e:
+                print(f"⚠️  Error publishing to Redis: {e}")
         
         return profile_data
     
