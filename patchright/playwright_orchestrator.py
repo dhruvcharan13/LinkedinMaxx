@@ -167,7 +167,7 @@ class PlaywrightOrchestrator:
                         # After post is completed, start scraping
                         print(f"\n🔍 Starting feed scraping after post...")
                         try:
-                            scraped_profiles = self.scraper.scrape_feed_profiles(max_profiles=5, max_scrolls=10)
+                            scraped_profiles = self.scraper.scrape_feed_profiles(max_profiles=3, max_scrolls=10)
                             print(f"✅ Scraped {len(scraped_profiles)} profiles from feed")
                             print(f"   → Profiles published to Redis for agent processing")
                         except Exception as e:
