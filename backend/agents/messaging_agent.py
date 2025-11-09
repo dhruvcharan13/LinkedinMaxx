@@ -75,7 +75,7 @@ Professional, friendly. Mention you're a Waterloo student. Ask about internships
         
         self.cofounder_message_prompt = ChatPromptTemplate.from_messages([
             ("system", """Write a 2-3 sentence LinkedIn message to a founder/co-founder.
-Show you reviewed their profile. Express interest in collaboration/startups."""),
+Show you reviewed their profile. Express interest in startups."""),
             ("human", "Founder profile: {bio}\nExperience: {experience}\nWrite message:")
         ])
     
@@ -219,8 +219,9 @@ Show you reviewed their profile. Express interest in collaboration/startups.""")
             result["message"] = message
             result["action"] = "send_message"
             
-            # Publish message instruction
-            task_id = redis_client.queue_message_instruction(profile_url, message, "send_message")
+            # Publish message instruction (format matches test_profile.json)
+            name = profile_data.get("name", "LinkedIn User")
+            task_id = redis_client.queue_message_instruction(profile_url, message, "send_message", name=name)
             result["task_id"] = task_id
             
             feedback.task_completed("profile_processing", profile_url, 
@@ -231,8 +232,9 @@ Show you reviewed their profile. Express interest in collaboration/startups.""")
             result["message"] = message
             result["action"] = "send_message"
             
-            # Publish message instruction
-            task_id = redis_client.queue_message_instruction(profile_url, message, "send_message")
+            # Publish message instruction (format matches test_profile.json)
+            name = profile_data.get("name", "LinkedIn User")
+            task_id = redis_client.queue_message_instruction(profile_url, message, "send_message", name=name)
             result["task_id"] = task_id
             
             feedback.task_completed("profile_processing", profile_url, 
@@ -251,8 +253,9 @@ Show you reviewed their profile. Express interest in collaboration/startups.""")
             result["action"] = "connect_only"
             result["message"] = None
             
-            # Publish connection instruction
-            task_id = redis_client.queue_message_instruction(profile_url, "", "connect_only")
+            # Publish connection instruction (format matches test_profile.json)
+            name = profile_data.get("name", "LinkedIn User")
+            task_id = redis_client.queue_message_instruction(profile_url, "", "connect_only", name=name)
             result["task_id"] = task_id
             
             feedback.task_completed("profile_processing", profile_url, 

@@ -288,8 +288,9 @@ Generate pickup line:""")
             result["action"] = "send_message"
             result["same_stream"] = True
             
-            # Publish message instruction
-            task_id = redis_client.queue_message_instruction(profile_url, pickup_line, "send_message")
+            # Publish message instruction (format matches test_profile.json)
+            name = profile_data.get("name", "LinkedIn User")
+            task_id = redis_client.queue_message_instruction(profile_url, pickup_line, "send_message", name=name)
             result["task_id"] = task_id
             
             feedback.task_completed("dating_processing", profile_url, 
@@ -301,8 +302,9 @@ Generate pickup line:""")
             result["message"] = None
             result["same_stream"] = False
             
-            # Publish connection instruction
-            task_id = redis_client.queue_message_instruction(profile_url, "", "connect_only")
+            # Publish connection instruction (format matches test_profile.json)
+            name = profile_data.get("name", "LinkedIn User")
+            task_id = redis_client.queue_message_instruction(profile_url, "", "connect_only", name=name)
             result["task_id"] = task_id
             
             feedback.task_completed("dating_processing", profile_url, 

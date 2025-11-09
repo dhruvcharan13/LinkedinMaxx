@@ -20,6 +20,7 @@ from utils.redis_client import redis_client
 from agents.daily_post_agent import DailyPostAgent
 from agents.messaging_agent import MessagingAgent
 from agents.dating_agent import DatingAgent
+from agents.comment_agent import CommentAgent
 
 load_dotenv()
 
@@ -43,6 +44,7 @@ orchestration_task: Optional[asyncio.Task] = None
 daily_post_agent = DailyPostAgent()
 messaging_agent = MessagingAgent()
 dating_agent = DatingAgent(user_stream=os.getenv("USER_STREAM", "1A"))
+comment_agent = CommentAgent()
 
 
 # Request models

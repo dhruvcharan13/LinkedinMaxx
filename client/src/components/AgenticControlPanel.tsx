@@ -61,11 +61,7 @@ const MOCK_SUGGESTIONS: AgentSuggestion[] = [
   },
 ];
 
-interface AgenticControlPanelProps {
-  onHighlightPost: (postId: string | null) => void;
-}
-
-export function AgenticControlPanel({ onHighlightPost }: AgenticControlPanelProps) {
+export function AgenticControlPanel() {
   const [suggestions, setSuggestions] = useState<AgentSuggestion[]>(MOCK_SUGGESTIONS);
 
   const handleApprove = (id: string) => {
@@ -86,25 +82,15 @@ export function AgenticControlPanel({ onHighlightPost }: AgenticControlPanelProp
     );
   };
 
-  const handleHover = (postId: string | undefined) => {
-    if (postId) {
-      onHighlightPost(postId);
-    }
-  };
-
-  const handleLeave = () => {
-    onHighlightPost(null);
-  };
-
   const approvedActions = suggestions.filter(s => s.status === 'approved');
   const pendingCount = suggestions.filter(s => s.status === 'pending').length;
 
   return (
-    <div className="h-full bg-white flex flex-col">
+    <div className="h-full w-full bg-white flex flex-col">
       {/* Header */}
       <div className="px-4 py-4 border-b border-gray-200 bg-[#0073b1]">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-sm text-white">LinkedInGPT Dashboard</h2>
+          <h2 className="text-sm text-white font-semibold">LinkedInGPT Dashboard</h2>
           <button className="p-1 hover:bg-white/10 rounded transition-colors">
             <Settings className="w-4 h-4 text-white" />
           </button>
@@ -123,8 +109,6 @@ export function AgenticControlPanel({ onHighlightPost }: AgenticControlPanelProp
             onApprove={() => handleApprove(suggestion.id)}
             onReject={() => handleReject(suggestion.id)}
             onEdit={(newText) => handleEdit(suggestion.id, newText)}
-            onHover={() => handleHover(suggestion.targetPostId)}
-            onLeave={handleLeave}
             delay={index * 0.05}
           />
         ))}

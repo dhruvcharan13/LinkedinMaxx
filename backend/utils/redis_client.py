@@ -155,13 +155,30 @@ class RedisClient:
         }
         return self.publish_instruction(queue_name, instruction)
     
-    def queue_message_instruction(self, profile_url: str, message: str, action: str = "send_message"):
-        """Queue a message instruction for Playwright."""
+    def queue_message_instruction(self, profile_url: str, message: str, action: str = "send_message", name: str = None):
+        """Queue a message instruction for Playwright.
+        
+        Format matches test_profile.json: {"profile_url": "...", "name": "...", "message": "..."}
+        """
         queue_name = "playwright:message"
         instruction = {
-            "action": action,  # "send_message" or "connect_only"
             "profile_url": profile_url,
+            "name": name or "LinkedIn User",  # Default name if not provided
             "message": message,
+            "action": action,  # "send_message" or "connect_only"
+            "timestamp": datetime.now().isoformat()
+        }
+        return self.publish_instruction(queue_name, instruction)
+    
+    def queue_comment_instruction(self, post_url: str, comment_text: str):
+        """Queue a comment instruction for Playwright.
+        
+        Format: {"post_url": "...", "comment": "..."}
+        """
+        queue_name = "playwright:comment"
+        instruction = {
+            "post_url": post_url,
+            "comment": comment_text,
             "timestamp": datetime.now().isoformat()
         }
         return self.publish_instruction(queue_name, instruction)

@@ -19,8 +19,6 @@ interface AgentCardProps {
   onApprove: () => void;
   onReject: () => void;
   onEdit: (newText: string) => void;
-  onHover: () => void;
-  onLeave: () => void;
   delay: number;
 }
 
@@ -29,8 +27,6 @@ export function AgentCard({
   onApprove, 
   onReject, 
   onEdit,
-  onHover,
-  onLeave,
   delay 
 }: AgentCardProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -58,8 +54,6 @@ export function AgentCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay }}
-      onMouseEnter={onHover}
-      onMouseLeave={onLeave}
       className="border border-gray-200 rounded-md p-3 bg-white hover:border-gray-300 transition-colors"
     >
       {/* Card Header */}
