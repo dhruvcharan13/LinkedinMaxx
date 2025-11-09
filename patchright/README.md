@@ -1,179 +1,136 @@
-# LinkedIn Waterloo Student Finder
+# LinkedIn Automation Suite
 
-Simple scraper that automatically finds Waterloo students from your LinkedIn feed.
+Three modular functionalities for LinkedIn automation.
 
-## ✨ Features
+## 📁 Directory Structure
 
-- **Auto-scrolling**: Browser scrolls automatically through your feed
-- **Waterloo detection**: Finds students who went to University of Waterloo
-- **Program extraction**: Identifies their program (Software Eng, CS, Math, etc.)
-- **Multiple formats**: Saves as JSON, CSV, and Excel
+```
+patchright/
+├── scraping/          # Find & classify profiles
+├── messaging/         # Send messages (placeholder)
+├── posting/           # Create posts
+└── shared/            # Shared utilities (future)
+```
+
+## 🔍 1. Scraping Module
+
+**Location:** `scraping/`
+
+Find Waterloo students AND recruiters/founders.
+
+```bash
+cd scraping
+python3 find_profiles.py
+```
+
+**Features:**
+- Dual targets: Waterloo + Recruiters
+- Auto-classification
+- Saves as `waterloo_1.json`, `recruiter_1.json`, etc.
+- Won't stop until BOTH targets met
+
+[Full documentation →](./scraping/README.md)
+
+## 💬 2. Messaging Module
+
+**Location:** `messaging/`
+
+**Status:** Placeholder (not yet implemented)
+
+**Planned features:**
+- Send direct messages
+- Send connection requests
+- Message templates
+
+## 📝 3. Posting Module
+
+**Location:** `posting/`
+
+Post text and images to LinkedIn.
+
+```bash
+cd posting
+python3 linkedin_poster.py
+```
+
+**Features:**
+- Post text
+- Upload images
+- Completely standalone
+
+[Full documentation →](./posting/README.md)
 
 ## 🚀 Quick Start
 
-### 1. Install
+### 1. Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install patchright pandas openpyxl numpy
+patchright install chrome
 ```
 
-### 2. Run
+### 2. Run Scraper
 
 ```bash
-python3 find_waterloo_students.py
+cd scraping
+python3 find_profiles.py
 ```
 
-### 3. What Happens
+Enter targets:
+- Waterloo students: 5
+- Recruiters: 3
 
-1. Browser opens
-2. Log in to LinkedIn manually
-3. Press Enter
-4. **Browser scrolls automatically** (just watch!)
-5. Finds 5 Waterloo students (or however many you want)
-6. Saves data to `scraped_data/`
-
-## 📊 Output
-
-Files saved in `scraped_data/`:
-- `waterloo_students_TIMESTAMP.json` - Full profile data
-- `waterloo_students_TIMESTAMP.csv` - Spreadsheet
-- `waterloo_students_TIMESTAMP.xlsx` - Excel file
-
-### Data Collected
-
-For each Waterloo student:
-- Name
-- Program (Software Engineering, Math, CS, etc.)
-- Headline
-- Location
-- Bio
-- Experience (with dates)
-- Education
-- Profile URL
-
-## 💡 How It Works
-
-1. Opens your LinkedIn feed
-2. Scrolls automatically to load more profiles
-3. Collects profile URLs
-4. Visits each profile
-5. Checks education for "Waterloo"
-6. Saves Waterloo students
-7. Stops when target reached (default: 5)
-
-## ⚙️ Customize
-
-When you run the script, it asks:
-
-```
-Find how many Waterloo students? (default: 5):
-```
-
-Just enter a number (e.g., `10`) or press Enter for 5.
-
-## 🛡️ Safety
-
-- Uses stealth browser (Patchright)
-- Human-like delays
-- Persistent session (stay logged in)
-- No aggressive scraping
-- Respects LinkedIn's structure
-
-## 📁 Project Files
-
-```
-linkedin-scraper/
-├── find_waterloo_students.py   ← Main script (RUN THIS!)
-├── linkedin_scraper.py          ← Core scraper class
-├── stealth_utils.py             ← Human-like behavior
-├── requirements.txt             ← Dependencies
-├── example_usage.py             ← More examples
-└── scraped_data/                ← Output folder
-    ├── waterloo_students_*.json
-    ├── waterloo_students_*.csv
-    └── waterloo_students_*.xlsx
-```
-
-## 🆘 Troubleshooting
-
-### "Browser not opening"
-
-Close all Chrome windows first:
-```bash
-pkill Chrome
-python3 find_waterloo_students.py
-```
-
-### "No profiles found"
-
-- Make sure you're logged into LinkedIn
-- Check your feed has posts
-- Try again later (feed updates)
-
-### "Could not find Waterloo students"
-
-- Your feed might not have Waterloo connections
-- Try increasing the number: enter `10` or `20` when prompted
-- Connect with more Waterloo people first
-
-## 🎯 Example Session
+### 3. Run Poster
 
 ```bash
-$ python3 find_waterloo_students.py
-
-============================================================
-WATERLOO STUDENT FINDER
-============================================================
-Find how many Waterloo students? (default: 5): 5
-
-✓ Will search for 5 Waterloo students
-
-============================================================
-SEARCHING FOR WATERLOO STUDENTS
-============================================================
-Scrolling through feed automatically...
-
-[1/23] Checking profile... ✗ Not Waterloo
-[2/23] Checking profile... ✓ WATERLOO! John Doe (Software Engineering) [1/5]
-[3/23] Checking profile... ✗ Not Waterloo
-[4/23] Checking profile... ✓ WATERLOO! Jane Smith (Mathematics) [2/5]
-...
-
-============================================================
-✅ FOUND 5 WATERLOO STUDENTS!
-============================================================
-
-Profiles:
-1. John Doe - Software Engineering
-2. Jane Smith - Mathematics
-3. Bob Chen - Computer Science
-4. Alice Wong - Engineering
-5. Mike Lee - Mathematics
-
-✅ DONE!
-Check the files in: scraped_data/
+cd posting
+python3 linkedin_poster.py
 ```
 
-## 📚 Advanced Usage
+Enter post text and optional image path.
 
-Check `example_usage.py` for more ways to use the scraper:
-- Scrape specific profile URLs
-- Collect from feed without filtering
-- Custom data extraction
+## 📊 Output Example
 
-## ⚠️ Legal Note
+After scraping:
 
-- Only scrape publicly available data
-- Respect LinkedIn's Terms of Service
-- For educational/personal use only
-- Don't abuse or spam
-
-## 🎉 That's It!
-
-Simple, clean, effective. Just run:
-
-```bash
-python3 find_waterloo_students.py
+```
+scraped_data/
+  session_20251108_170000/
+    waterloo_1.json
+    waterloo_2.json
+    waterloo_3.json
+    recruiter_1.json
+    recruiter_2.json
+    summary_all.json
+    session_log.txt
 ```
 
-And watch it find Waterloo students automatically! 🚀
+## 🎯 Key Features
+
+- **Modular:** Each function is independent
+- **Persistent Login:** Browser remembers your session
+- **Stealth:** Random delays, human-like behavior
+- **Type Classification:** Auto-detects profile types
+- **Dual Targets:** Scrape multiple categories at once
+
+## 📖 Module Details
+
+| Module | Status | Purpose |
+|--------|--------|---------|
+| Scraping | ✅ Complete | Find & classify profiles |
+| Posting | ✅ Complete | Create LinkedIn posts |
+| Messaging | ⏳ Placeholder | Send DMs & requests |
+
+## 🔧 Tech Stack
+
+- **Patchright:** Stealth web automation
+- **Python 3.8+:** Core language
+- **Pandas:** Data export
+- **ChromeDriver:** Browser automation
+
+## ⚠️ Notes
+
+- First run: Manual login required
+- After that: Browser remembers login
+- All modules are independent
+- Scraping module has built-in stealth features
