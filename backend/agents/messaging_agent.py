@@ -219,26 +219,54 @@ Show you reviewed their profile. Express interest in startups."""),
             result["message"] = message
             result["action"] = "send_message"
             
-            # Publish message instruction (format matches test_profile.json)
+            # Queue for frontend approval
             name = profile_data.get("name", "LinkedIn User")
-            task_id = redis_client.queue_message_instruction(profile_url, message, "send_message", name=name)
+            task_data = {
+                "type": "message",
+                "content": message,
+                "url": profile_url,
+                "name": name,
+                "agent_name": "Messaging Agent",
+                "agent_emoji": "💬",
+                "metadata": {
+                    "action": "send_message",
+                    "classification": "recruiter",
+                    "confidence": classification.confidence,
+                    "reasoning": classification.reasoning
+                }
+            }
+            task_id = redis_client.queue_pending_task(task_data)
             result["task_id"] = task_id
             
             feedback.task_completed("profile_processing", profile_url, 
-                                  f"Recruiter message generated and queued")
+                                  f"Recruiter message generated and queued for approval")
             
         elif classification.category == "cofounder":
             message = self.generate_cofounder_message(profile_data)
             result["message"] = message
             result["action"] = "send_message"
             
-            # Publish message instruction (format matches test_profile.json)
+            # Queue for frontend approval
             name = profile_data.get("name", "LinkedIn User")
-            task_id = redis_client.queue_message_instruction(profile_url, message, "send_message", name=name)
+            task_data = {
+                "type": "message",
+                "content": message,
+                "url": profile_url,
+                "name": name,
+                "agent_name": "Messaging Agent",
+                "agent_emoji": "💬",
+                "metadata": {
+                    "action": "send_message",
+                    "classification": "cofounder",
+                    "confidence": classification.confidence,
+                    "reasoning": classification.reasoning
+                }
+            }
+            task_id = redis_client.queue_pending_task(task_data)
             result["task_id"] = task_id
             
             feedback.task_completed("profile_processing", profile_url, 
-                                  f"Co-founder message generated and queued")
+                                  f"Co-founder message generated and queued for approval")
             
         elif classification.category == "waterloo_student":
             # Route to dating agent (will be handled by orchestration)
@@ -253,13 +281,27 @@ Show you reviewed their profile. Express interest in startups."""),
             result["action"] = "connect_only"
             result["message"] = None
             
-            # Publish connection instruction (format matches test_profile.json)
+            # Queue for frontend approval (even connect-only tasks need approval)
             name = profile_data.get("name", "LinkedIn User")
-            task_id = redis_client.queue_message_instruction(profile_url, "", "connect_only", name=name)
+            task_data = {
+                "type": "message",
+                "content": "",
+                "url": profile_url,
+                "name": name,
+                "agent_name": "Messaging Agent",
+                "agent_emoji": "💬",
+                "metadata": {
+                    "action": "connect_only",
+                    "classification": "other",
+                    "confidence": classification.confidence,
+                    "reasoning": classification.reasoning
+                }
+            }
+            task_id = redis_client.queue_pending_task(task_data)
             result["task_id"] = task_id
             
             feedback.task_completed("profile_processing", profile_url, 
-                                  "Connection request queued (no message)")
+                                  "Connection request queued for approval")
         
         return result
 

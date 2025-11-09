@@ -129,9 +129,38 @@ Generate post:""")
         
         return task_id
     
+    def queue_for_approval(self, post_content: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Queue post task for frontend approval.
+        
+        Args:
+            post_content: The generated post content
+            metadata: Optional metadata about the post
+            
+        Returns:
+            Task ID
+        """
+        feedback.agent_action("Daily Post Agent", "Queueing post for frontend approval...")
+        
+        task_data = {
+            "type": "post",
+            "content": post_content,
+            "url": "",  # Posts don't have a URL
+            "name": "",  # Posts don't have a name
+            "agent_name": "Daily Post Agent",
+            "agent_emoji": "🧠",
+            "metadata": metadata or {}
+        }
+        
+        task_id = redis_client.queue_pending_task(task_data)
+        
+        feedback.task_completed("post_queued", task_id, "Post queued for approval")
+        
+        return task_id
+    
     def generate_and_publish(self, context: Optional[str] = None) -> str:
         """
-        Generate a post and immediately publish it to the queue.
+        Generate a post and queue it for frontend approval.
         
         Args:
             context: Optional context for post generation
@@ -142,8 +171,8 @@ Generate post:""")
         # Generate post
         result = self.generate_post(context)
         
-        # Publish to queue
-        task_id = self.publish_post(result["content"], result["metadata"])
+        # Queue for approval instead of publishing directly
+        task_id = self.queue_for_approval(result["content"], result["metadata"])
         
         return task_id
 

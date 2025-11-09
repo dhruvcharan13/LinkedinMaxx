@@ -68,6 +68,17 @@ class ProfileData(BaseModel):
     type: Optional[str] = None  # Pre-classified type from Patchright
 
 
+class TaskApprovalRequest(BaseModel):
+    """Request to approve a task."""
+    task_id: str
+    edited_content: Optional[str] = None  # Optional edited content
+
+
+class TaskRejectionRequest(BaseModel):
+    """Request to reject a task."""
+    task_id: str
+
+
 # API Endpoints
 @app.get("/health")
 async def health_check():
@@ -197,8 +208,63 @@ async def queue_stats():
         "playwright_post": redis_client.get_queue_length("playwright:post"),
         "playwright_message": redis_client.get_queue_length("playwright:message"),
         "profiles_scraped": redis_client.get_queue_length("profiles:scraped"),
+        "pending_approval": redis_client.get_queue_length("tasks:pending_approval"),
         "timestamp": datetime.now().isoformat()
     }
+
+
+@app.get("/api/tasks/pending")
+async def get_pending_tasks():
+    """Get all pending tasks for frontend approval."""
+    try:
+        tasks = redis_client.get_pending_tasks()
+        return {
+            "status": "success",
+            "tasks": tasks,
+            "count": len(tasks),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        feedback.error("Failed to get pending tasks", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tasks/approve")
+async def approve_task(request: TaskApprovalRequest):
+    """Approve a task and publish it to execution queue."""
+    try:
+        success = redis_client.approve_task(request.task_id, request.edited_content)
+        if success:
+            return {
+                "status": "success",
+                "message": "Task approved and queued for execution",
+                "task_id": request.task_id,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Task not found")
+    except Exception as e:
+        feedback.error("Failed to approve task", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tasks/reject")
+async def reject_task(request: TaskRejectionRequest):
+    """Reject a task."""
+    try:
+        success = redis_client.reject_task(request.task_id)
+        if success:
+            return {
+                "status": "success",
+                "message": "Task rejected",
+                "task_id": request.task_id,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Task not found")
+    except Exception as e:
+        feedback.error("Failed to reject task", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Orchestration logic

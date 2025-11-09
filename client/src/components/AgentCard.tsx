@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Check, X, Edit2, CheckCircle, XCircle } from 'lucide-react';
 
@@ -16,7 +16,7 @@ interface AgentSuggestion {
 
 interface AgentCardProps {
   suggestion: AgentSuggestion;
-  onApprove: () => void;
+  onApprove: (editedContent?: string) => void;
   onReject: () => void;
   onEdit: (newText: string) => void;
   delay: number;
@@ -32,8 +32,14 @@ export function AgentCard({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(suggestion.suggestion);
 
-  const handleSaveEdit = () => {
-    onEdit(editText);
+  // Update editText when suggestion changes
+  useEffect(() => {
+    setEditText(suggestion.suggestion);
+  }, [suggestion.suggestion]);
+
+  const handleApproveWithEdit = () => {
+    // Always pass edited content to onApprove (even if unchanged)
+    onApprove(editText);
     setIsEditing(false);
   };
 
@@ -91,10 +97,10 @@ export function AgentCard({
             />
             <div className="flex gap-2">
               <button
-                onClick={handleSaveEdit}
-                className="flex-1 px-3 py-1.5 bg-[#0073b1] text-white rounded-md text-xs hover:bg-[#005885] transition-colors"
+                onClick={handleApproveWithEdit}
+                className="flex-1 px-3 py-1.5 bg-green-500 text-white rounded-md text-xs hover:bg-green-600 transition-colors"
               >
-                Save
+                Save & Approve
               </button>
               <button
                 onClick={() => {
@@ -118,7 +124,7 @@ export function AgentCard({
       {suggestion.status === 'pending' && !isEditing && (
         <div className="flex gap-2 mb-2">
           <button
-            onClick={onApprove}
+            onClick={() => onApprove()}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-500 text-white rounded-md text-xs hover:bg-green-600 transition-colors"
           >
             <Check className="w-3.5 h-3.5" />

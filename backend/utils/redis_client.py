@@ -183,6 +183,183 @@ class RedisClient:
         }
         return self.publish_instruction(queue_name, instruction)
     
+    def queue_pending_task(self, task_data: Dict[str, Any]) -> str:
+        """Queue a task for frontend approval.
+        
+        Args:
+            task_data: Task data including type, content, url, name, etc.
+            
+        Returns:
+            Task ID
+        """
+        queue_name = "tasks:pending_approval"
+        task_id = f"{queue_name}:{datetime.now().isoformat()}"
+        
+        task = {
+            "task_id": task_id,
+            "type": task_data.get("type"),  # "post", "message", "comment"
+            "content": task_data.get("content"),  # Message text, post text, comment text
+            "url": task_data.get("url"),  # Profile URL or post URL
+            "name": task_data.get("name"),  # Person name
+            "agent_name": task_data.get("agent_name", "Unknown Agent"),
+            "agent_emoji": task_data.get("agent_emoji", "🤖"),
+            "metadata": task_data.get("metadata", {}),  # Confidence, classification, etc.
+            "status": "pending",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        if not self.client:
+            self._connect()
+        if not self.client:
+            raise RuntimeError(f"Redis client not connected. Start Redis with: docker run -d -p 6379:6379 redis:alpine")
+        
+        # Publish to Redis queue
+        self.client.lpush(queue_name, json.dumps(task))
+        
+        # Also store in a hash for retrieval
+        self.client.hset(f"{queue_name}:tasks", task_id, json.dumps(task))
+        
+        logger.info(f"Queued pending task: {task_id}")
+        feedback.data_published(queue_name, "pending_task", task)
+        return task_id
+    
+    def get_pending_tasks(self) -> List[Dict[str, Any]]:
+        """Get all pending tasks for frontend approval.
+        
+        Returns:
+            List of pending tasks
+        """
+        if not self.client:
+            self._connect()
+        if not self.client:
+            return []
+        
+        queue_name = "tasks:pending_approval"
+        # Get all tasks from the queue (without popping)
+        tasks = []
+        queue_length = self.client.llen(queue_name)
+        
+        if queue_length > 0:
+            # Get all items from the queue
+            items = self.client.lrange(queue_name, 0, -1)
+            for item in items:
+                try:
+                    task = json.loads(item)
+                    if task.get("status") == "pending":
+                        tasks.append(task)
+                except json.JSONDecodeError:
+                    continue
+        
+        return tasks
+    
+    def approve_task(self, task_id: str, edited_content: Optional[str] = None) -> bool:
+        """Approve a task and move it to execution queue.
+        
+        Args:
+            task_id: Task ID to approve
+            edited_content: Optional edited content
+            
+        Returns:
+            True if approved successfully
+        """
+        if not self.client:
+            self._connect()
+        if not self.client:
+            return False
+        
+        queue_name = "tasks:pending_approval"
+        
+        # Get task from hash
+        task_json = self.client.hget(f"{queue_name}:tasks", task_id)
+        if not task_json:
+            return False
+        
+        task = json.loads(task_json)
+        
+        # Update content if edited
+        if edited_content:
+            task["content"] = edited_content
+        
+        # Update status
+        task["status"] = "approved"
+        task["approved_at"] = datetime.now().isoformat()
+        
+        # Update in hash
+        self.client.hset(f"{queue_name}:tasks", task_id, json.dumps(task))
+        
+        # Publish to execution queue based on type
+        task_type = task.get("type")
+        content = edited_content or task.get("content", "")
+        url = task.get("url", "")
+        name = task.get("name", "LinkedIn User")
+        
+        if task_type == "post":
+            # Publish to playwright:post
+            self.queue_post_instruction(content, task.get("metadata", {}))
+        elif task_type == "message":
+            # Publish to playwright:message
+            action = task.get("metadata", {}).get("action", "send_message")
+            self.queue_message_instruction(url, content, action, name)
+        elif task_type == "comment":
+            # Publish to playwright:comment
+            self.queue_comment_instruction(url, content)
+        
+        # Remove from pending queue (find and remove)
+        items = self.client.lrange(queue_name, 0, -1)
+        for item in items:
+            try:
+                item_task = json.loads(item)
+                if item_task.get("task_id") == task_id:
+                    self.client.lrem(queue_name, 1, item)
+                    break
+            except json.JSONDecodeError:
+                continue
+        
+        logger.info(f"Approved task: {task_id}")
+        return True
+    
+    def reject_task(self, task_id: str) -> bool:
+        """Reject a task.
+        
+        Args:
+            task_id: Task ID to reject
+            
+        Returns:
+            True if rejected successfully
+        """
+        if not self.client:
+            self._connect()
+        if not self.client:
+            return False
+        
+        queue_name = "tasks:pending_approval"
+        
+        # Get task from hash
+        task_json = self.client.hget(f"{queue_name}:tasks", task_id)
+        if not task_json:
+            return False
+        
+        task = json.loads(task_json)
+        task["status"] = "rejected"
+        task["rejected_at"] = datetime.now().isoformat()
+        
+        # Update in hash
+        self.client.hset(f"{queue_name}:tasks", task_id, json.dumps(task))
+        
+        # Remove from pending queue
+        items = self.client.lrange(queue_name, 0, -1)
+        for item in items:
+            try:
+                item_task = json.loads(item)
+                if item_task.get("task_id") == task_id:
+                    self.client.lrem(queue_name, 1, item)
+                    break
+            except json.JSONDecodeError:
+                continue
+        
+        logger.info(f"Rejected task: {task_id}")
+        return True
+    
     def get_queue_length(self, queue_name: str) -> int:
         """Get the length of a queue."""
         if not self.client:

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AgentCard } from './AgentCard';
 import { Clock, Settings } from 'lucide-react';
 import { motion } from 'motion/react';
+import { getPendingTasks, approveTask, rejectTask, type PendingTask } from '../services/api';
 
 interface AgentSuggestion {
   id: string;
@@ -15,68 +16,83 @@ interface AgentSuggestion {
   status: 'pending' | 'approved' | 'rejected' | 'executed';
 }
 
-const MOCK_SUGGESTIONS: AgentSuggestion[] = [
-  {
-    id: 'suggestion-1',
-    agentName: 'Post Agent',
-    agentEmoji: '🧠',
-    type: 'post',
-    suggestion: 'Didn\'t get the co-op, but gained resilience 💪 Every setback is a setup for a comeback! #GrowthMindset #CareerJourney',
-    confidence: 87,
-    timestamp: new Date(),
-    status: 'pending',
-  },
-  {
-    id: 'suggestion-2',
-    agentName: 'Comment Agent',
-    agentEmoji: '💬',
-    type: 'comment',
-    suggestion: 'Congrats on the feature launch! 🎉 The attention to detail really shows.',
-    targetPostId: '1',
-    confidence: 92,
-    timestamp: new Date(Date.now() - 5 * 60000),
-    status: 'pending',
-  },
-  {
-    id: 'suggestion-3',
-    agentName: 'Engagement Agent',
-    agentEmoji: '👍',
-    type: 'like',
-    suggestion: 'Like post about AI and productivity from Sarah Chen',
-    targetPostId: '2',
-    confidence: 95,
-    timestamp: new Date(Date.now() - 10 * 60000),
-    status: 'pending',
-  },
-  {
-    id: 'suggestion-4',
-    agentName: 'Comment Agent',
-    agentEmoji: '💬',
-    type: 'comment',
-    suggestion: 'This resonates! Would love to hear more about your implementation.',
-    targetPostId: '6',
-    confidence: 85,
-    timestamp: new Date(Date.now() - 20 * 60000),
-    status: 'approved',
-  },
-];
+// Convert PendingTask to AgentSuggestion format
+function convertTaskToSuggestion(task: PendingTask): AgentSuggestion {
+  return {
+    id: task.task_id,
+    agentName: task.agent_name,
+    agentEmoji: task.agent_emoji,
+    type: task.type === 'message' ? 'dm' : task.type, // Map 'message' to 'dm' for UI
+    suggestion: task.content,
+    targetPostId: task.url, // Use URL as target for now
+    confidence: task.metadata.confidence || 85,
+    timestamp: new Date(task.timestamp),
+    status: task.status,
+  };
+}
 
 export function AgenticControlPanel() {
-  const [suggestions, setSuggestions] = useState<AgentSuggestion[]>(MOCK_SUGGESTIONS);
+  const [suggestions, setSuggestions] = useState<AgentSuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleApprove = (id: string) => {
-    setSuggestions(prev =>
-      prev.map(s => s.id === id ? { ...s, status: 'approved' as const } : s)
-    );
+  // Poll for pending tasks every 2-3 seconds
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const tasks = await getPendingTasks();
+        const converted = tasks.map(convertTaskToSuggestion);
+        setSuggestions(converted);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching tasks:', err);
+        setError('Failed to fetch tasks from backend');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Initial fetch
+    fetchTasks();
+
+    // Poll every 2 seconds
+    const interval = setInterval(fetchTasks, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleApprove = async (id: string, editedContent?: string) => {
+    try {
+      const success = await approveTask(id, editedContent);
+      if (success) {
+        // Remove from local state (backend will remove from queue)
+        setSuggestions(prev => prev.filter(s => s.id !== id));
+      } else {
+        setError('Failed to approve task');
+      }
+    } catch (err) {
+      console.error('Error approving task:', err);
+      setError('Failed to approve task');
+    }
   };
 
-  const handleReject = (id: string) => {
-    setSuggestions(prev =>
-      prev.map(s => s.id === id ? { ...s, status: 'rejected' as const } : s)
-    );
+  const handleReject = async (id: string) => {
+    try {
+      const success = await rejectTask(id);
+      if (success) {
+        // Remove from local state (backend will remove from queue)
+        setSuggestions(prev => prev.filter(s => s.id !== id));
+      } else {
+        setError('Failed to reject task');
+      }
+    } catch (err) {
+      console.error('Error rejecting task:', err);
+      setError('Failed to reject task');
+    }
   };
 
   const handleEdit = (id: string, newSuggestion: string) => {
+    // Update local state immediately for better UX
     setSuggestions(prev =>
       prev.map(s => s.id === id ? { ...s, suggestion: newSuggestion } : s)
     );
@@ -98,20 +114,35 @@ export function AgenticControlPanel() {
         <p className="text-xs text-white/80">
           {pendingCount} pending action{pendingCount !== 1 ? 's' : ''}
         </p>
+        {error && (
+          <p className="text-xs text-red-200 mt-1">
+            {error}
+          </p>
+        )}
       </div>
 
       {/* Agent Cards */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
-        {suggestions.map((suggestion, index) => (
-          <AgentCard
-            key={suggestion.id}
-            suggestion={suggestion}
-            onApprove={() => handleApprove(suggestion.id)}
-            onReject={() => handleReject(suggestion.id)}
-            onEdit={(newText) => handleEdit(suggestion.id, newText)}
-            delay={index * 0.05}
-          />
-        ))}
+        {isLoading ? (
+          <div className="text-center text-gray-500 py-8">
+            Loading tasks...
+          </div>
+        ) : suggestions.length === 0 ? (
+          <div className="text-center text-gray-500 py-8">
+            No pending tasks. Waiting for agents to generate tasks...
+          </div>
+        ) : (
+          suggestions.map((suggestion, index) => (
+            <AgentCard
+              key={suggestion.id}
+              suggestion={suggestion}
+              onApprove={(editedContent) => handleApprove(suggestion.id, editedContent)}
+              onReject={() => handleReject(suggestion.id)}
+              onEdit={(newText) => handleEdit(suggestion.id, newText)}
+              delay={index * 0.05}
+            />
+          ))
+        )}
       </div>
 
       {/* Scheduled Queue */}

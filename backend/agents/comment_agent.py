@@ -229,12 +229,26 @@ Generate a comment:""")
             result["comment"] = comment
             result["action"] = "comment"
             
-            # Publish comment instruction to Redis
-            task_id = redis_client.queue_comment_instruction(post_url, comment)
+            # Queue for frontend approval
+            author = post_data.get("author", "Unknown")
+            task_data = {
+                "type": "comment",
+                "content": comment,
+                "url": post_url,
+                "name": author,
+                "agent_name": "Comment Agent",
+                "agent_emoji": "💬",
+                "metadata": {
+                    "confidence": decision.confidence,
+                    "reasoning": decision.reasoning,
+                    "engagement": post_data.get("engagement", "Unknown")
+                }
+            }
+            task_id = redis_client.queue_pending_task(task_data)
             result["task_id"] = task_id
             
             feedback.task_completed("comment_processing", post_url, 
-                                  f"Comment generated and queued")
+                                  f"Comment generated and queued for approval")
         else:
             # Skip commenting
             result["comment"] = None

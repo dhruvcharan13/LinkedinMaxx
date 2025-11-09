@@ -288,13 +288,30 @@ Generate pickup line:""")
             result["action"] = "send_message"
             result["same_stream"] = True
             
-            # Publish message instruction (format matches test_profile.json)
+            # Queue for frontend approval
             name = profile_data.get("name", "LinkedIn User")
-            task_id = redis_client.queue_message_instruction(profile_url, pickup_line, "send_message", name=name)
+            task_data = {
+                "type": "message",
+                "content": pickup_line,
+                "url": profile_url,
+                "name": name,
+                "agent_name": "Dating Agent",
+                "agent_emoji": "💕",
+                "metadata": {
+                    "action": "send_message",
+                    "classification": "waterloo_student",
+                    "estimated_stream": estimate.estimated_stream,
+                    "user_stream": self.user_stream,
+                    "same_stream": True,
+                    "confidence": estimate.confidence,
+                    "reasoning": estimate.reasoning
+                }
+            }
+            task_id = redis_client.queue_pending_task(task_data)
             result["task_id"] = task_id
             
             feedback.task_completed("dating_processing", profile_url, 
-                                  f"Pickup line generated for same stream ({estimate.estimated_stream})")
+                                  f"Pickup line generated for same stream ({estimate.estimated_stream}) and queued for approval")
             
         else:
             # Different stream, just connect
@@ -302,13 +319,30 @@ Generate pickup line:""")
             result["message"] = None
             result["same_stream"] = False
             
-            # Publish connection instruction (format matches test_profile.json)
+            # Queue for frontend approval
             name = profile_data.get("name", "LinkedIn User")
-            task_id = redis_client.queue_message_instruction(profile_url, "", "connect_only", name=name)
+            task_data = {
+                "type": "message",
+                "content": "",
+                "url": profile_url,
+                "name": name,
+                "agent_name": "Dating Agent",
+                "agent_emoji": "💕",
+                "metadata": {
+                    "action": "connect_only",
+                    "classification": "waterloo_student",
+                    "estimated_stream": estimate.estimated_stream,
+                    "user_stream": self.user_stream,
+                    "same_stream": False,
+                    "confidence": estimate.confidence,
+                    "reasoning": estimate.reasoning
+                }
+            }
+            task_id = redis_client.queue_pending_task(task_data)
             result["task_id"] = task_id
             
             feedback.task_completed("dating_processing", profile_url, 
-                                  f"Different stream ({estimate.estimated_stream} vs {self.user_stream}), connection queued")
+                                  f"Different stream ({estimate.estimated_stream} vs {self.user_stream}), connection queued for approval")
         
         return result
 
