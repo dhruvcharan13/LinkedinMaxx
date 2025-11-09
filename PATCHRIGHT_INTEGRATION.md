@@ -1,5 +1,17 @@
 # Patchright Integration Guide
 
+## ⚠️ IMPORTANT: Profile Classification
+
+**Patchright must classify profiles before publishing to Redis.** Add a `type` field to each profile in `profile_data`:
+
+- `"waterloo"` - Waterloo student (routes directly to Dating Agent, skips LLM classification)
+- `"recruiter"` - Recruiter (generates recruiter message)
+- `"cofounder"` or `"founder"` - Co-founder/Founder (generates co-founder message)
+- `"other"` - Other (uses LLM classification as fallback)
+- *(omit field)* - Falls back to LLM classification
+
+The backend will optimize processing based on this type, reducing API costs and improving speed.
+
 ## Understanding Patchright Code
 
 ### Current Structure
@@ -101,7 +113,7 @@ class LinkedInScraper:
             "instruction": {
                 "action": "process_profile",
                 "profile_url": profile_data["url"],
-                "profile_data": profile_data,
+                "profile_data": profile_data,  # Must include "type" field: "waterloo", "recruiter", "cofounder", "other"
                 "timestamp": datetime.now().isoformat()
             },
             "status": "pending"

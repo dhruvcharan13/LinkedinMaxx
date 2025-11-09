@@ -15,6 +15,15 @@ from dotenv import load_dotenv
 from utils.logger import feedback, logger
 from utils.redis_client import redis_client
 
+# Fix for langchain attribute errors (verbose, debug, llm_cache)
+import langchain
+if not hasattr(langchain, 'verbose'):
+    langchain.verbose = False
+if not hasattr(langchain, 'debug'):
+    langchain.debug = False
+if not hasattr(langchain, 'llm_cache'):
+    langchain.llm_cache = None
+
 load_dotenv()
 
 
@@ -33,60 +42,85 @@ class MessagingAgent:
     def __init__(self):
         # Set API key as environment variable for Gemini
         os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
+        # Always use gemini-2.5-flash for speed - no mapping needed, just use flash directly
         self.llm = ChatGoogleGenerativeAI(
-            model=os.getenv("GEMINI_MODEL", "gemini-pro"),
-            temperature=0.7
+            model="gemini-2.5-flash",  # Hardcoded for speed - flash is fastest
+            temperature=0.6,  # Lower temperature for faster, more deterministic responses
+            max_tokens=200  # Limit response length for speed
         )
         self.output_parser = JsonOutputParser(pydantic_object=ProfileClassification)
         self._setup_prompts()
     
     def _setup_prompts(self):
         """Set up prompt templates."""
-        # Classification prompt
+        # Classification prompt (optimized for speed)
         self.classification_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert at analyzing LinkedIn profiles. 
-Classify profiles into these categories:
-1. "recruiter" - Someone who recruits talent (Talent Acquisition, Recruiter, HR)
-2. "cofounder" - Co-founder or Founder of a company
-3. "waterloo_student" - Current or recent Waterloo student (University of Waterloo)
-4. "other" - Doesn't fit the above categories
-
-Return JSON with category, confidence (0-1), and reasoning."""),
-            ("human", """Analyze this LinkedIn profile:
-
+            ("system", """Classify LinkedIn profiles. Return valid JSON.
+Categories: "recruiter" (Talent Acquisition/HR), "cofounder" (Founder/Co-founder), "waterloo_student" (UWaterloo student), "other".
+Return JSON with: category (string), confidence (float 0-1), reasoning (string, brief)."""),
+            ("human", """Profile:
 Bio: {bio}
 Experience: {experience}
 Education: {education}
 
-Classify this profile.""")
+Classify and return valid JSON only.""")
         ])
         
-        # Message generation prompts
+        # Message generation prompts (optimized for speed - concise)
         self.recruiter_message_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a Waterloo student reaching out to a recruiter.
-Write a professional, friendly message asking about internship opportunities.
-Keep it concise (2-3 sentences), mention you're a Waterloo student, and express genuine interest."""),
-            ("human", "Write a LinkedIn message for this recruiter profile:\n{bio}")
+            ("system", """Write a 2-3 sentence LinkedIn message to a recruiter. 
+Professional, friendly. Mention you're a Waterloo student. Ask about internships."""),
+            ("human", "Recruiter profile: {bio}\nWrite message:")
         ])
         
         self.cofounder_message_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a Waterloo student reaching out to a co-founder/founder.
-Write an engaging message about collaboration, startup interest, or potential partnership.
-Be authentic, show you've looked at their profile, and express genuine curiosity about their work."""),
-            ("human", "Write a LinkedIn message for this founder profile:\n{bio}\nExperience: {experience}")
+            ("system", """Write a 2-3 sentence LinkedIn message to a founder/co-founder.
+Show you reviewed their profile. Express interest in collaboration/startups."""),
+            ("human", "Founder profile: {bio}\nExperience: {experience}\nWrite message:")
         ])
     
     def classify_profile(self, profile_data: Dict[str, Any]) -> ProfileClassification:
         """
         Classify a LinkedIn profile into a category.
+        If profile_data already has a 'type' field from Patchright, use it.
+        Otherwise, use LLM to classify.
         
         Args:
-            profile_data: Dictionary with profile information (bio, experience, education)
+            profile_data: Dictionary with profile information (bio, experience, education, type)
             
         Returns:
             ProfileClassification object
         """
-        feedback.agent_action("Messaging Agent", "Classifying profile...")
+        # Check if type is already provided by Patchright
+        profile_type = profile_data.get("type", "").lower()
+        
+        if profile_type:
+            # Map Patchright types to agent categories
+            type_mapping = {
+                "waterloo": "waterloo_student",
+                "recruiter": "recruiter",
+                "cofounder": "cofounder",
+                "co-founder": "cofounder",
+                "founder": "cofounder",
+                "other": "other"
+            }
+            
+            category = type_mapping.get(profile_type, "other")
+            feedback.agent_action("Messaging Agent", f"Using pre-classified type: {profile_type}")
+            feedback.agent_classification(
+                profile_data.get("url", "unknown"),
+                category,
+                1.0  # High confidence since Patchright already classified it
+            )
+            
+            return ProfileClassification(
+                category=category,
+                confidence=1.0,
+                reasoning=f"Pre-classified by Patchright as: {profile_type}"
+            )
+        
+        # No type provided, use LLM to classify
+        feedback.agent_action("Messaging Agent", "Classifying profile with LLM...")
         
         bio = profile_data.get("bio", "Not available")
         experience = profile_data.get("experience", "Not available")
@@ -159,17 +193,18 @@ Be authentic, show you've looked at their profile, and express genuine curiosity
     def process_profile(self, profile_url: str, profile_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process a profile: classify and generate appropriate message or route to dating agent.
+        If profile_data has a 'type' field from Patchright, uses that instead of LLM classification.
         
         Args:
             profile_url: URL of the LinkedIn profile
-            profile_data: Profile information (bio, experience, education)
+            profile_data: Profile information (bio, experience, education, type)
             
         Returns:
             Dictionary with processing result
         """
         feedback.task_processing("profile_processing", profile_url)
         
-        # Classify profile
+        # Classify profile (will use pre-classified type if available)
         classification = self.classify_profile(profile_data)
         
         result = {

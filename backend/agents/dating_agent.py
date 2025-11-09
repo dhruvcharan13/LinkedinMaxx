@@ -16,6 +16,15 @@ from dotenv import load_dotenv
 from utils.logger import feedback, logger
 from utils.redis_client import redis_client
 
+# Fix for langchain attribute errors (verbose, debug, llm_cache)
+import langchain
+if not hasattr(langchain, 'verbose'):
+    langchain.verbose = False
+if not hasattr(langchain, 'debug'):
+    langchain.debug = False
+if not hasattr(langchain, 'llm_cache'):
+    langchain.llm_cache = None
+
 load_dotenv()
 
 
@@ -33,9 +42,10 @@ class DatingAgent:
     def __init__(self, waterloo_streams_path: str = "./data/waterloo_streams.json", user_stream: Optional[str] = None):
         # Set API key as environment variable for Gemini
         os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
+        # Always use gemini-2.5-flash for speed - no mapping needed, just use flash directly
         self.llm = ChatGoogleGenerativeAI(
-            model=os.getenv("GEMINI_MODEL", "gemini-pro"),
-            temperature=0.8  # Higher temperature for creative pickup lines
+            model="gemini-2.5-flash",  # Hardcoded for speed - flash is fastest
+            temperature=0.7  # Slightly lower for faster, more consistent responses
         )
         self.output_parser = JsonOutputParser(pydantic_object=StreamEstimate)
         self.waterloo_streams = self._load_waterloo_streams(waterloo_streams_path)
@@ -61,49 +71,33 @@ class DatingAgent:
     
     def _setup_prompts(self):
         """Set up prompt templates."""
-        # Stream estimation prompt
+        # Stream estimation prompt (optimized for speed)
         self.stream_estimation_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert at analyzing Waterloo student profiles.
-Estimate their co-op stream based on:
-1. Education: University of Waterloo mentions
-2. Experience: Internship/co-op dates and terms
-3. Program: Engineering, CS, Math, etc.
-
-Streams:
-- 1A: First co-op in Fall
-- 1B: First co-op in Winter  
-- 2A: First co-op in Spring
-- 2B: First co-op in Summer
-- 4: Alternative Fall stream
-- 8: No co-op
-
-Return JSON with is_waterloo (bool), estimated_stream (string or null), confidence (0-1), and reasoning."""),
-            ("human", """Analyze this profile for Waterloo student and stream:
-
+            ("system", """Analyze Waterloo student profiles. Return valid JSON.
+Streams: 1A (Fall co-op), 1B (Winter), 2A (Spring), 2B (Summer), 4 (Alt Fall), 8 (No co-op).
+Return JSON with: is_waterloo (boolean), estimated_stream (string or null), confidence (float 0-1), reasoning (string, brief)."""),
+            ("human", """Profile:
 Bio: {bio}
 Experience: {experience}
 Education: {education}
+Dates: {internship_dates}
 
-Co-op/Internship dates mentioned: {internship_dates}
-
-Estimate if they're a Waterloo student and their stream.""")
+Analyze and return valid JSON only.""")
         ])
         
-        # Pickup line generation prompt
+        # Pickup line generation prompt (optimized for speed)
         self.pickup_line_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a Waterloo student generating a funny, clever pickup line for LinkedIn.
-The pickup line should:
-- Be humorous and lighthearted
+            ("system", """Generate a witty, LinkedIn-appropriate pickup line for a Waterloo {stream} student. 
+Requirements:
+- 1-2 sentences maximum
 - Reference Waterloo or co-op culture
-- Be appropriate for LinkedIn (professional but fun)
-- Show personality and confidence
-- Be 1-2 sentences max
+- Playful but professional tone
+- Appropriate for LinkedIn
 
-Style: Witty, self-aware, and playful. Don't be creepy or overly forward."""),
-            ("human", """Generate a pickup line for a Waterloo student in the same stream ({stream}).
-Their profile shows: {profile_summary}
+Return only the pickup line text, no additional explanation."""),
+            ("human", """Profile: {profile_summary}
 
-Create a fun, memorable pickup line.""")
+Generate pickup line:""")
         ])
     
     def extract_internship_dates(self, experience: str) -> str:
@@ -158,7 +152,24 @@ Create a fun, memorable pickup line.""")
                 reasoning="No Waterloo keywords found in profile"
             )
         
-        # Use LLM to estimate stream
+        # Try to infer stream from profile data first (simple rule-based check)
+        # Look for "2A", "1A", "1B", "2B" in education/bio
+        stream_keywords = {
+            "2A": ["2A", "2a", "2 A", "second year", "sophomore"],
+            "1A": ["1A", "1a", "1 A", "first year", "freshman"],
+            "1B": ["1B", "1b", "1 B"],
+            "2B": ["2B", "2b", "2 B"]
+        }
+        
+        profile_text = (bio + " " + education).lower()
+        inferred_stream = None
+        
+        for stream, keywords in stream_keywords.items():
+            if any(keyword in profile_text for keyword in keywords):
+                inferred_stream = stream
+                break
+        
+        # Use LLM to estimate stream (with fallback to inferred stream)
         estimation_chain = self.stream_estimation_prompt | self.llm | self.output_parser
         
         try:
@@ -170,6 +181,12 @@ Create a fun, memorable pickup line.""")
             })
             
             estimate = StreamEstimate(**result)
+            
+            # If LLM couldn't estimate but we inferred one, use inferred
+            if not estimate.estimated_stream and inferred_stream:
+                estimate.estimated_stream = inferred_stream
+                estimate.confidence = 0.7
+                estimate.reasoning = f"Inferred from profile text: {inferred_stream}"
             
             logger.info(f"Stream estimate: {estimate.estimated_stream} (confidence: {estimate.confidence:.2%})")
             logger.info(f"Reasoning: {estimate.reasoning}")
@@ -183,11 +200,12 @@ Create a fun, memorable pickup line.""")
         except Exception as e:
             feedback.error("Failed to estimate stream", e)
             logger.error(f"Error estimating stream: {e}")
+            # Use inferred stream if available, otherwise return None
             return StreamEstimate(
                 is_waterloo=True,
-                estimated_stream=None,
-                confidence=0.5,
-                reasoning=f"Estimation failed: {str(e)}"
+                estimated_stream=inferred_stream,  # Use inferred stream as fallback
+                confidence=0.6 if inferred_stream else 0.5,
+                reasoning=f"Estimation failed, using inferred: {inferred_stream}" if inferred_stream else f"Estimation failed: {str(e)}"
             )
     
     def is_same_stream(self, estimated_stream: Optional[str]) -> bool:

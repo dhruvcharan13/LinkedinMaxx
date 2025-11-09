@@ -15,13 +15,14 @@ from utils.redis_client import redis_client
 from agents.messaging_agent import MessagingAgent
 from agents.dating_agent import DatingAgent
 
-# Test profile data (from Playwright scraping)
+# Test profile data (from Patchright scraping with type field)
 test_profile = {
     "url": "https://www.linkedin.com/in/elrich-chen/",
     "scraped_at": "2025-11-08T16:47:09.871850",
     "name": "Elrich Chen",
     "headline": "CS @ UWaterloo | AI automations for DoneMaker | Aspiring Backend Engineer 💻☁️",
     "location": "He/Him",
+    "type": "waterloo",  # Pre-classified by Patchright
     "bio": "📧 eklchen@uwaterloo.ca for connecting with me (or send a connection req) :)\n\nMy story: 🌎\n\nI'm one who identifies strongly with change. To keep it short, I grew up in India for 18 years before moving back to my citizen home Canada, to pursue CS at Queen's University (Kingston). Unbenowkst to me I would feel the need for a higher level of challenge, so I then transferred to the University of Waterloo's highly esteemed CS program. Now I find myself as a learner in backend development, while also seizing every opportunity on campus for more involvement and leadership.\n\nAlways open to meeting people who care about debating ideas, building, connecting, and pushing boundaries.\n\nSkills snapshot (for the recruiters): product development, user research, product roadmapping, agile methodologies, data analysis, technical writing, stakeholder communication, UX/UI design, software development life cycle (SDLC), business analysis, process improvement, programming (Python, TypeScript, React, Flask), project management, leadership, and cross-functional collaboration.",
     "experience": [
         {
@@ -67,7 +68,7 @@ test_profile = {
 
 
 def format_profile_for_agents(profile_data):
-    """Convert Playwright scraped format to agent-friendly format."""
+    """Convert Patchright scraped format to agent-friendly format."""
     # Extract bio
     bio = profile_data.get("bio", "")
     if not bio and profile_data.get("headline"):
@@ -109,7 +110,8 @@ def format_profile_for_agents(profile_data):
         "experience": experience,
         "education": education,
         "name": profile_data.get("name", ""),
-        "headline": profile_data.get("headline", "")
+        "headline": profile_data.get("headline", ""),
+        "type": profile_data.get("type", "")  # Include type field from Patchright
     }
 
 
@@ -126,9 +128,13 @@ def test_messaging_agent():
         print(f"\n📋 Profile: {formatted_profile['name']}")
         print(f"🔗 URL: {formatted_profile['url']}")
         print(f"📝 Headline: {formatted_profile['headline']}")
+        print(f"🏷️  Type: {test_profile.get('type', 'Not provided')}")
         print(f"\n📄 Bio (first 200 chars): {formatted_profile['bio'][:200]}...")
         print(f"\n💼 Experience: {formatted_profile['experience'][:150]}...")
         print(f"\n🎓 Education: {formatted_profile['education']}")
+        
+        # Include type in formatted profile
+        formatted_profile["type"] = test_profile.get("type", "")
         
         result = agent.process_profile(formatted_profile["url"], formatted_profile)
         

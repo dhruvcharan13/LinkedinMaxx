@@ -63,6 +63,7 @@ class ProfileData(BaseModel):
     bio: Optional[str] = None
     experience: Optional[str] = None
     education: Optional[str] = None
+    type: Optional[str] = None  # Pre-classified type from Patchright
 
 
 # API Endpoints
@@ -148,16 +149,35 @@ async def process_profile(profile: ProfileData):
             "url": profile.url,
             "bio": profile.bio or "",
             "experience": profile.experience or "",
-            "education": profile.education or ""
+            "education": profile.education or "",
+            "type": profile.type or ""  # Include type from Patchright
         }
         
-        # Process through messaging agent
-        result = messaging_agent.process_profile(profile.url, profile_data)
+        # Check if profile has pre-classified type
+        profile_type = profile_data.get("type", "").lower()
         
-        # If routed to dating agent, process it
-        if result.get("action") == "route_to_dating_agent":
+        if profile_type == "waterloo":
+            # Skip messaging agent, go directly to dating agent
             dating_result = dating_agent.process_waterloo_student(profile.url, profile_data)
-            result["dating_agent_result"] = dating_result
+            result = {
+                "profile_url": profile.url,
+                "classification": {
+                    "category": "waterloo_student",
+                    "confidence": 1.0,
+                    "reasoning": "Pre-classified by Patchright"
+                },
+                "action": "route_to_dating_agent",
+                "dating_agent_result": dating_result,
+                "processed_at": datetime.now().isoformat()
+            }
+        else:
+            # Process through messaging agent
+            result = messaging_agent.process_profile(profile.url, profile_data)
+            
+            # If routed to dating agent, process it
+            if result.get("action") == "route_to_dating_agent":
+                dating_result = dating_agent.process_waterloo_student(profile.url, profile_data)
+                result["dating_agent_result"] = dating_result
         
         return {
             "status": "success",
@@ -213,13 +233,44 @@ async def orchestrate_workflow(request: StartScrollingRequest):
                     if profile_url and profile_data:
                         feedback.agent_action("Orchestrator", f"Processing profile: {profile_url[:50]}...")
                         
-                        # Process through messaging agent
-                        result = messaging_agent.process_profile(profile_url, profile_data)
+                        # Check if profile already has a type from Patchright
+                        profile_type = profile_data.get("type", "").lower()
                         
-                        # If routed to dating agent, process it
-                        if result.get("action") == "route_to_dating_agent":
+                        if profile_type == "waterloo":
+                            # Skip messaging agent, go directly to dating agent
+                            feedback.agent_action("Orchestrator", "Profile pre-classified as Waterloo, routing to Dating Agent")
+                            result = {
+                                "profile_url": profile_url,
+                                "classification": {
+                                    "category": "waterloo_student",
+                                    "confidence": 1.0,
+                                    "reasoning": "Pre-classified by Patchright"
+                                },
+                                "action": "route_to_dating_agent",
+                                "processed_at": datetime.now().isoformat()
+                            }
+                            # Process with dating agent
                             dating_result = dating_agent.process_waterloo_student(profile_url, profile_data)
                             result["dating_agent_result"] = dating_result
+                            
+                        elif profile_type == "recruiter":
+                            # Process as recruiter
+                            result = messaging_agent.process_profile(profile_url, profile_data)
+                            # Should generate recruiter message
+                            
+                        elif profile_type in ["cofounder", "co-founder", "founder"]:
+                            # Process as co-founder
+                            result = messaging_agent.process_profile(profile_url, profile_data)
+                            # Should generate co-founder message
+                            
+                        else:
+                            # Process through messaging agent (will classify if no type)
+                            result = messaging_agent.process_profile(profile_url, profile_data)
+                            
+                            # If routed to dating agent, process it
+                            if result.get("action") == "route_to_dating_agent":
+                                dating_result = dating_agent.process_waterloo_student(profile_url, profile_data)
+                                result["dating_agent_result"] = dating_result
                         
                         logger.info(f"Profile processed: {result}")
                     

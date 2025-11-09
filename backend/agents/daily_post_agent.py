@@ -13,6 +13,15 @@ from dotenv import load_dotenv
 from utils.logger import feedback, logger
 from utils.redis_client import redis_client
 
+# Fix for langchain attribute errors (verbose, debug, llm_cache)
+import langchain
+if not hasattr(langchain, 'verbose'):
+    langchain.verbose = False
+if not hasattr(langchain, 'debug'):
+    langchain.debug = False
+if not hasattr(langchain, 'llm_cache'):
+    langchain.llm_cache = None
+
 load_dotenv()
 
 
@@ -22,31 +31,24 @@ class DailyPostAgent:
     def __init__(self):
         # Set API key as environment variable for Gemini
         os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
+        # Always use gemini-2.5-flash for speed - no mapping needed, just use flash directly
         self.llm = ChatGoogleGenerativeAI(
-            model=os.getenv("GEMINI_MODEL", "gemini-pro"),
-            temperature=0.7
+            model="gemini-2.5-flash",  # Hardcoded for speed - flash is fastest
+            temperature=0.7,
+            max_tokens=300  # Limit response length for speed
         )
         self.output_parser = StrOutputParser()
         self._setup_prompt()
     
     def _setup_prompt(self):
-        """Set up the prompt template for post generation."""
+        """Set up the prompt template for post generation (optimized for speed)."""
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a Waterloo student creating a LinkedIn post. 
-Your posts should be:
-- Professional but authentic
-- Engaging and relatable to other students and professionals
-- Include relevant hashtags
-- Be concise (2-3 paragraphs max)
-- Show personality and enthusiasm
-
-Style: Write in first person, be genuine, and include specific details when available."""),
-            ("human", """Generate a LinkedIn post for today. 
-
-Context: {context}
+            ("system", """Create a LinkedIn post as a Waterloo student. 
+2-3 paragraphs. Professional but authentic. Include hashtags. First person. Be genuine."""),
+            ("human", """Context: {context}
 Date: {date}
 
-Create an engaging post that a Waterloo student might share. Include relevant hashtags at the end.""")
+Generate post:""")
         ])
     
     def generate_post(self, context: Optional[str] = None) -> Dict[str, Any]:
