@@ -1,3 +1,6 @@
 2025/11/09-10:05:47.233 129949c Reusing MANIFEST /Users/elrichchen/Desktop/linkedin-scraper/LinkedinMaxx/browser_data/Default/Local Storage/leveldb/MANIFEST-000001
 2025/11/09-10:05:47.239 129949c Recovering log #3
 2025/11/09-10:05:47.240 129949c Reusing old log /Users/elrichchen/Desktop/linkedin-scraper/LinkedinMaxx/browser_data/Default/Local Storage/leveldb/000003.log 
+2025/11/09-10:09:54.214 129949f Level-0 table #5: started
+2025/11/09-10:09:54.222 129949f Level-0 table #5: 32118 bytes OK
+2025/11/09-10:09:54.226 129949f Delete type=0 #3

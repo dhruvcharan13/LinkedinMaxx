@@ -3,6 +3,7 @@ import { AgentCard } from './AgentCard';
 import { Clock, Settings } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getPendingTasks, approveTask, rejectTask, type PendingTask } from '../services/api';
+import { mockTasks, shouldUseMockData } from '../data/mockTasks';
 
 interface AgentSuggestion {
   id: string;
@@ -31,13 +32,79 @@ function convertTaskToSuggestion(task: PendingTask): AgentSuggestion {
   };
 }
 
+// Development flag: Set to true to always use mock data for UI development
+const FORCE_MOCK_DATA = true;
+
 export function AgenticControlPanel() {
   const [suggestions, setSuggestions] = useState<AgentSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [useMockData, setUseMockData] = useState(FORCE_MOCK_DATA);
 
-  // Poll for pending tasks every 2-3 seconds
+  // Check if we should use mock data on mount
   useEffect(() => {
+    // FORCE_MOCK_DATA flag for development - always use mock data
+    if (FORCE_MOCK_DATA) {
+      setUseMockData(true);
+      const converted = mockTasks.map(convertTaskToSuggestion);
+      setSuggestions(converted);
+      setIsLoading(false);
+      console.log('🚀 Using mock data for UI development');
+      return;
+    }
+
+    // Check environment variable
+    if (shouldUseMockData()) {
+      setUseMockData(true);
+      const converted = mockTasks.map(convertTaskToSuggestion);
+      setSuggestions(converted);
+      setIsLoading(false);
+      return;
+    }
+
+    // Try to fetch from backend to check availability
+    const checkBackend = async () => {
+      try {
+        // Try to fetch tasks (this will fail if backend is not running)
+        const tasks = await getPendingTasks();
+        
+        // Backend is available
+        setUseMockData(false);
+        if (tasks.length > 0) {
+          const converted = tasks.map(convertTaskToSuggestion);
+          setSuggestions(converted);
+        } else {
+          // Backend is available but no tasks - use mock data for development
+          console.warn('Backend returned no tasks, using mock data for development');
+          setUseMockData(true);
+          const converted = mockTasks.map(convertTaskToSuggestion);
+          setSuggestions(converted);
+        }
+        setError(null);
+      } catch (err) {
+        // Backend not available - use mock data automatically
+        console.warn('Backend not available, using mock data for styling');
+        setUseMockData(true);
+        const converted = mockTasks.map(convertTaskToSuggestion);
+        setSuggestions(converted);
+        setError(null); // Don't show error, just use mock data silently for better UX
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkBackend();
+  }, []);
+
+  // Poll for pending tasks every 2-3 seconds (only if not using mock data)
+  useEffect(() => {
+    if (useMockData) {
+      // Use mock data immediately
+      const converted = mockTasks.map(convertTaskToSuggestion);
+      setSuggestions(converted);
+      return;
+    }
+
     const fetchTasks = async () => {
       try {
         const tasks = await getPendingTasks();
@@ -46,9 +113,11 @@ export function AgenticControlPanel() {
         setError(null);
       } catch (err) {
         console.error('Error fetching tasks:', err);
-        setError('Failed to fetch tasks from backend');
-      } finally {
-        setIsLoading(false);
+        // Fall back to mock data if backend fails
+        setUseMockData(true);
+        setError('Backend unavailable, using mock data');
+        const converted = mockTasks.map(convertTaskToSuggestion);
+        setSuggestions(converted);
       }
     };
 
@@ -59,9 +128,21 @@ export function AgenticControlPanel() {
     const interval = setInterval(fetchTasks, 2000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [useMockData]);
 
   const handleApprove = async (id: string, editedContent?: string) => {
+    if (useMockData) {
+      // For mock data, just update status locally
+      setSuggestions(prev =>
+        prev.map(s =>
+          s.id === id
+            ? { ...s, status: 'approved' as const, suggestion: editedContent || s.suggestion }
+            : s
+        )
+      );
+      return;
+    }
+
     try {
       const success = await approveTask(id, editedContent);
       if (success) {
@@ -77,6 +158,14 @@ export function AgenticControlPanel() {
   };
 
   const handleReject = async (id: string) => {
+    if (useMockData) {
+      // For mock data, just update status locally
+      setSuggestions(prev =>
+        prev.map(s => (s.id === id ? { ...s, status: 'rejected' as const } : s))
+      );
+      return;
+    }
+
     try {
       const success = await rejectTask(id);
       if (success) {
@@ -114,11 +203,6 @@ export function AgenticControlPanel() {
         <p className="text-xs text-white/80">
           {pendingCount} pending action{pendingCount !== 1 ? 's' : ''}
         </p>
-        {error && (
-          <p className="text-xs text-red-200 mt-1">
-            {error}
-          </p>
-        )}
       </div>
 
       {/* Agent Cards */}
